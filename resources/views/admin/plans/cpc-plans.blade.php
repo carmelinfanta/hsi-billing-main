@@ -13,6 +13,8 @@
                     <th>S.No</th>
                     <th>Plan Name</th>
                     <th>Plan Price</th>
+                    <th>Interval</th>
+                    <th>Interval Unit</th>
                     <th>Number of Plan Subscriptions</th>
                     <th>Max Allowed Clicks(Plan)</th>
                     <th>Add-On Name</th>
@@ -29,6 +31,8 @@
                     <td>{{$index+1}}</td>
                     <td>{{$plan->plan_name}}</td>
                     <td>{{$plan->price}}</td>
+                    <td>{{$plan->interval}}</td>
+                    <td>{{$plan->interval_unit}}</td>
                     <td>{{$plan->count}}</td>
                     <td>{{$plan->max_clicks}}</td>
                     @php

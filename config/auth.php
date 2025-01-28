@@ -41,10 +41,11 @@ return [
             'provider' => 'users',
         ],
         'api' => [
-            'driver' => 'token',
-            'provider' => 'clients',
+            'driver' => 'passport',
+            'provider' => 'users',
         ],
     ],
+
 
     /*
     |--------------------------------------------------------------------------

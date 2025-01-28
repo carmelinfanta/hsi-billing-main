@@ -29,7 +29,7 @@
                         <p class="m-0  p-1 fw-bold ">Subscription Amount(US$):</p>
                     </td>
                     <td class="w-50">
-                        <p class=" m-0 p-1">${{number_format($planPrice)}}</p>
+                        <p class=" m-0 p-1">${{number_format($planPrice,2)}}</p>
                     </td>
                 </tr>
                 <tr>

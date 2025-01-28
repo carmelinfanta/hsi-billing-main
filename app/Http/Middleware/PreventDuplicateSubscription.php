@@ -18,7 +18,6 @@ class PreventDuplicateSubscription
         $currentUrl = $request->url();
         $refererUrl = $request->server('HTTP_REFERER');
 
-        dd($currentUrl, $refererUrl);
         // Check if the request is coming from the same page (indicating a back button click)
         if ($request->server('HTTP_REFERER') === $request->url()) {
             // Redirect the user to another route

@@ -192,11 +192,6 @@ Resources:
 
   WebService:
     Type: AWS::ECS::Service
-    Metadata:
-      cfn-lint:
-        config:
-          ignore_checks:
-            - E3002
     Properties:
       Cluster:
         Fn::ImportValue: !Sub "${InfrastructureStackName}-ClusterName"
@@ -293,6 +288,77 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: fpm
 
+
+  SchedulerService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Fn::ImportValue: !Sub "${InfrastructureStackName}-ClusterName"
+      TaskDefinition: !Ref SchedulerTaskDefinition
+      HealthCheckGracePeriodSeconds: 30
+      DeploymentConfiguration:
+        MaximumPercent: !Ref DeploymentConfigMaxPercent
+        MinimumHealthyPercent: !Ref DeploymentConfigMinPercent
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      PlacementStrategies:
+        - Field: attribute:ecs.availability-zone
+          Type: spread
+        - Field: instanceId
+          Type: spread
+
+  SchedulerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AppName}-${EnvironmentName}-scheduler
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub "${PipelineStackName}-ExecutionRoleArn"
+      ContainerDefinitions:
+        - Name: scheduler
+          Essential: true
+          Image: !Sub
+            - "${RepoUrl}:fpm-${ImageTag}"
+            - RepoUrl:
+                Fn::ImportValue: !Sub "${PipelineStackName}-RepositoryUrl"
+          MemoryReservation: 512
+          Cpu: 1024
+          Command:
+            - php
+            - artisan
+            - schedule:work
+          Environment:
+            - Name: APP_NAME
+              Value: !Ref AppName
+            - Name: ENVIRONMENT_NAME
+              Value: !Ref EnvironmentName
+            - Name: CHAMBER_ENV
+              Value: "1"
+            - Name: CHAMBER_PREFIXES
+              Value: !Sub app/${AppName}/${EnvironmentName}/run
+            - Name: CHAMBER_KMS_KEY_ALIAS
+              Value:
+                Fn::ImportValue: !Sub '${PipelineStackName}-SsmKeyAlias'
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: NEWRELIC_ENABLED
+              Value: "1"
+            - Name: AWS_BUCKET
+              Value: !Ref fileStorageBucket
+          EnvironmentFiles:
+            - Type: s3
+              Value: !Sub
+                - ${SourceBucketArn}/EnvFiles/${EnvironmentName}/basic.env
+                - SourceBucketArn:
+                    Fn::ImportValue: !Sub "${PipelineStackName}-SourceBucketArn"
+                  EnvironmentName: !Ref EnvironmentName
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AppCloudWatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: scheduler
 
 
   TaskRole:

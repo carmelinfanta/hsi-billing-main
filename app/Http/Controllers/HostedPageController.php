@@ -2,11 +2,21 @@
 
 namespace App\Http\Controllers;
 
-
+use Aws\S3\S3Client;
+use Aws\Exception\AwsException;
+use Aws\Credentials\CredentialProvider;
+use Illuminate\Support\Facades\Log;
+use App\Mail\PartnerPurchasedPlan;
+use App\Mail\PartnerSetup;
+use App\Mail\PartnerSetupMarkedAsCompleted;
+use App\Mail\SetupCompleted;
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Session;
 use App\Models\AccessToken;
+use App\Models\AddOn;
+use App\Models\Admin;
+use App\Models\BudgetCapSettings;
 use App\Models\HostedPageId;
 use App\Models\Plans;
 use App\Models\Subscriptions;
@@ -14,14 +24,28 @@ use App\Models\PaymentMethod;
 use App\Models\CreditNotes;
 use App\Models\Partner;
 use App\Models\Invoices;
+use App\Models\PartnerUsers;
+use App\Models\ProviderAvailabilityData;
+use App\Models\ProviderData;
+use App\Models\SelectedPlan;
 use App\Models\Support;
 use App\Models\Terms;
-use Illuminate\Support\Facades\Log;
-
-
+use GuzzleHttp\Exception\GuzzleException;
+use Illuminate\Support\Facades\Mail;
 
 class HostedPageController extends Controller
 {
+    private $s3Client;
+
+    public function __construct()
+    {
+        $credentials = env('AWS_PROFILE') ? CredentialProvider::sso('profile ' . env('AWS_PROFILE')) : NULL;
+        $this->s3Client = new S3Client([
+            'version' => 'latest',
+            'region'  => env('AWS_DEFAULT_REGION'),
+            'credentials' => $credentials
+        ]);
+    }
     public function thankyouCreate(Request $request, CreditNotes $creditnote)
     {
 
@@ -128,6 +152,45 @@ class HostedPageController extends Controller
         }
     }
 
+    public function addNewPaymentMethod(Request $request)
+    {
+        $hostedpage_id = $this->extractHostedPageIdFromUrl($request);
+
+
+        if (!$hostedpage_id) {
+
+            return redirect('/admin/support')->with('fail', 'Hosted page ID is required.');
+        }
+
+        $response = $this->fetchHostedPageData($hostedpage_id);
+
+        $data = $response->data;
+
+        $paymentMethodId = $data->payment_method->payment_method_id;
+
+        $partnerId = $data->payment_method->customer->customer_id;
+
+        $paymentMethod = new PaymentMethod();
+
+        $paymentMethod->type = $data->payment_method->type;
+
+        $paymentMethod->payment_method_id = $paymentMethodId;
+
+        $paymentMethod->zoho_cust_id = $partnerId;
+
+        $paymentMethod->last_four_digits = $data->payment_method->type === "card" ? $data->payment_method->last_four_digits : $data->payment_method->account_number;
+
+        $paymentMethod->payment_gateway = $data->payment_method->payment_gateway;
+
+        $paymentMethod->expiry_month = $data->payment_method->expiry_month ?? '';
+
+        $paymentMethod->expiry_year = $data->payment_method->expiry_year ?? '';
+
+        $paymentMethod->save();
+
+        return redirect('/subscription')->with('success', 'Payment Method Added to the Partner successfully');
+    }
+
     public function thankyouDowngrade(Request $request, CreditNotes $creditnote)
     {
         $hostedpage_id = $this->extractHostedPageIdFromUrl($request);
@@ -203,6 +266,81 @@ class HostedPageController extends Controller
         return redirect('/profile')->with('success', 'Payment method added successfully');
     }
 
+    public function addPayment(Request $request)
+    {
+        $hostedpage_id = $this->extractHostedPageIdFromUrl($request);
+
+        if (!$hostedpage_id) {
+            return redirect('/admin/support')->with('fail', 'Hosted page ID is required.');
+        }
+
+        $response = $this->fetchHostedPageData($hostedpage_id);
+
+
+        $data = $response->data;
+
+        $paymentMethodId = $data->payment_method->payment_method_id;
+
+        $partnerId = $data->payment_method->customer->customer_id;
+
+
+        $paymentMethod = new PaymentMethod();
+
+        $paymentMethod->type = $data->payment_method->type;
+
+        $paymentMethod->payment_method_id = $paymentMethodId;
+
+        $paymentMethod->zoho_cust_id = $partnerId;
+
+        $paymentMethod->last_four_digits = $data->payment_method->type === "card" ? $data->payment_method->last_four_digits : $data->payment_method->account_number;
+
+        $paymentMethod->payment_gateway = $data->payment_method->payment_gateway;
+
+        $paymentMethod->expiry_month = $data->payment_method->expiry_month ?? '';
+
+        $paymentMethod->expiry_year = $data->payment_method->expiry_year ?? '';
+
+        $paymentMethod->save();
+
+        $term = new Terms();
+
+        $term->zoho_cust_id = $partnerId;;
+
+        $userId = Session::get('userId');
+        if ($userId) {
+            $term->zoho_cpid = $userId;
+            $term->consent = true;
+        } else {
+            $term->zoho_cpid = 'admin';
+
+            $term->consent = false;
+        }
+
+        $term->subscription_number = "-";
+
+        $term->ip_address = $this->get_client_ip();
+
+        $term->browser_agent = $_SERVER['HTTP_USER_AGENT'];
+
+        $selected_plan = SelectedPlan::where('zoho_cust_id', $partnerId)->first();
+
+        $selected_plan_id = $selected_plan->plan_id;
+
+        if ($selected_plan_id !== "custom_enterprise") {
+
+            $plan = Plans::where('plan_id', $selected_plan_id)->first();
+
+            $term->plan_name = $plan->plan_name;
+            $term->amount = $plan->price;
+            $term->save();
+            $this->sendMailToAdmin($partnerId);
+        }
+
+
+
+        return redirect('/provider-info')->with('success', "Thanks! Next you'll need to enter your plan data before we activate");
+    }
+
     public function extractHostedPageIdFromUrl($request)
     {
         $queryParams = $request->query();
@@ -253,78 +391,111 @@ class HostedPageController extends Controller
     }
 
 
+
     private function handleSubscription($response)
-    {
+    {   
         $data = $response->data;
-
         $action = $response->action;
+        $zoho_cust_id = $data->subscription->customer->customer_id;
 
-        try {
+        $partner = Partner::where('zoho_cust_id', $zoho_cust_id)->first();
+        $plan = Plans::where('plan_code', '=', $data->subscription->plan->plan_code)->first();
 
-            $plan = Plans::where('plan_code', '=', $data->subscription->plan->plan_code)->first();
+        $subscription = $this->getOrCreateSubscription($data, $plan);
 
-            $subscription = Subscriptions::where('subscription_id', $data->subscription->subscription_id)->first();
+        $this->updateSubscriptionDetails($subscription, $data, $plan);
 
-            $isNewSubscription = false;
+        if ($action === "one_time_addon") {
+            $this->processOneTimeAddon($subscription, $data, $partner, $plan);
+        } else {
+            $this->processRegularSubscription($subscription, $plan, $partner);
+        }
 
-            if (!$subscription) {
+        $partner->status = "completed";
+        $partner->save();
 
-                $subscription = new Subscriptions();
+        return $subscription;
+    }
 
-                $isNewSubscription = true;
-            }
+    private function getOrCreateSubscription($data, $plan)
+    {
+        $subscription = Subscriptions::where('subscription_id', $data->subscription->subscription_id)->first();
 
-            $plan = Plans::where('plan_code', '=', $data->subscription->plan->plan_code)->first();
-
+        if (!$subscription) {
+            $subscription = new Subscriptions();
             $subscription->subscription_id = $data->subscription->subscription_id;
+        }
 
-            $subscription->subscription_number = $data->subscription->subscription_number;
+        return $subscription;
+    }
 
-            $subscription->status = $data->subscription->status;
+    private function updateSubscriptionDetails($subscription, $data, $plan)
+    {
+        $subscription->subscription_number = $data->subscription->subscription_number;
+        $subscription->status = $data->subscription->status;
+        $subscription->start_date = $data->subscription->current_term_starts_at;
+        $subscription->next_billing_at = $data->subscription->next_billing_at;
+        $subscription->plan_id = $plan->plan_id;
+        $subscription->zoho_cust_id = $data->subscription->customer->customer_id;
+        $subscription->is_metered_billing = $data->subscription->is_metered_billing;
+        $subscription->invoice_id = $data->invoice->invoice_id;
 
-            $subscription->start_date = $data->subscription->current_term_starts_at;
+        // Set payment method
+        if (isset($data->subscription->card->card_id)) {
+            $subscription->payment_method_id = $data->subscription->card->card_id;
+        } elseif (isset($data->subscription->bank_account->account_id)) {
+            $subscription->payment_method_id = $data->subscription->bank_account->account_id;
+        }
 
-            $subscription->next_billing_at = $data->subscription->next_billing_at;
+        $subscription->save();
+    }
 
-            $subscription->plan_id = $plan->plan_id;
-
-            $subscription->zoho_cust_id = $data->subscription->customer->customer_id;
-
-            $subscription->invoice_id = $data->invoice->invoice_id;
-
-            if (isset($data->subscription->card->card_id)) {
-
-                $subscription->payment_method_id = $data->subscription->card->card_id;
-            }
-            if (isset($data->subscription->bank_account->account_id)) {
-
-                $subscription->payment_method_id = $data->subscription->bank_account->account_id;
-            }
+    private function processOneTimeAddon($subscription, $data, $partner, $plan)
+    {
+        $subscription->addon = $data->invoice->invoice_items[0]->code;
+        $subscription->save();
 
 
+        $addon = AddOn::where('plan_id', $subscription->plan_id)->first();
 
+        if (!($plan->is_cpc)) {
+            $budget_cap = $this->getOrCreateBudgetCap($partner);
 
-
-            if ($action === "one_time_addon") {
-
-                $subscription->addon = $data->invoice->invoice_items[0]->code;
-
-                $subscription->save();
-            } else {
-
-                $subscription->addon = null;
-
-                $subscription->save();
-            }
-
-            return $subscription;
-        } catch (\Exception $e) {
-
-            Log::error('Error occurred while handling subscription: ' . $e->getMessage());
-
-            return null;
+            $budget_cap->click_limit += $addon->max_clicks;
+            $budget_cap->cost_limit += $addon->addon_price;
+            $budget_cap->save();
         }
     }
+
+    private function processRegularSubscription($subscription, $plan, $partner)
+    {
+        $subscription->addon = null;
+        $subscription->save();
+
+
+        if (!($plan->is_cpc)) {
+            $budget_cap = $this->getOrCreateBudgetCap($partner);
+            $budget_cap->plan_type = 'flat';
+            $budget_cap->click_limit = $plan->max_clicks;
+            $budget_cap->cost_limit = $plan->price;
+            $budget_cap->save();
+        }
+    }
+
+    private function getOrCreateBudgetCap($partner)
+    {
+        $budget_cap = BudgetCapSettings::where('partner_id', $partner->id)->first();
+
+        if (!$budget_cap) {
+            $budget_cap = new BudgetCapSettings();
+            $budget_cap->partner_id = $partner->id;
+        }
+
+        return $budget_cap;
+    }
+
+
+
 
 
 
@@ -361,8 +532,11 @@ class HostedPageController extends Controller
 
             $invoice->invoice_number = $data->invoice->number;
         }
-
-
+        $cpc_plan = strpos($data->invoice->invoice_items[0]->code, 'cpc') !== false;
+        $first_invoice = Invoices::where('zoho_cust_id', $data->subscription->customer->customer_id)->exists();
+        if ($cpc_plan && !$first_invoice) {
+            $invoice->first_cpc = true;
+        }
         $invoice->invoice_date = $data->invoice->invoice_date;
         $invoice->credits_applied = $data->invoice->credits_applied;
         $invoice->discount = $data->invoice->invoice_items[0]->discount_amount;
@@ -375,26 +549,28 @@ class HostedPageController extends Controller
         $invoice->subscription_id = [
             "subscription_id" => $data->subscription->subscription_id,
         ];
-        $invoice->invoice_items = [
-            "code" =>  $data->invoice->invoice_items[0]->code,
-            "quantity" => $data->invoice->invoice_items[0]->quantity,
-            "item_id" => $data->invoice->invoice_items[0]->item_id,
-            "discount_amount" => $data->invoice->invoice_items[0]->discount_amount,
-            "tax_name" => $data->invoice->invoice_items[0]->tax_name,
-            "description" => $data->invoice->invoice_items[0]->description,
-            "item_total" => $data->invoice->invoice_items[0]->item_total,
-            "item_custom_fields" => $data->invoice->invoice_items[0]->item_custom_fields,
-            "tax_id" => $data->invoice->invoice_items[0]->tax_id,
-            "tags" => $data->invoice->invoice_items[0]->tags,
-            "unit" => $data->invoice->invoice_items[0]->unit,
-            "account_id" => $data->invoice->invoice_items[0]->account_id,
-            "tax_type" => $data->invoice->invoice_items[0]->tax_type,
-            "price" => $data->invoice->invoice_items[0]->price,
-            "product_id" => $data->invoice->invoice_items[0]->product_id,
-            "account_name" => $data->invoice->invoice_items[0]->account_name,
-            "name" => $data->invoice->invoice_items[0]->name,
-            "tax_percentage" => $data->invoice->invoice_items[0]->tax_percentage,
-        ];
+        $invoice->invoice_items = array_map(function ($item) {
+            return [
+                "code" => $item->code,
+                "quantity" => $item->quantity,
+                "item_id" => $item->item_id,
+                "discount_amount" => $item->discount_amount,
+                "tax_name" => $item->tax_name,
+                "description" => $item->description,
+                "item_total" => $item->item_total,
+                "item_custom_fields" => $item->item_custom_fields,
+                "tax_id" => $item->tax_id,
+                "tags" => $item->tags,
+                "unit" => $item->unit,
+                "account_id" => $item->account_id,
+                "tax_type" => $item->tax_type,
+                "price" => $item->price,
+                "product_id" => $item->product_id,
+                "account_name" => $item->account_name,
+                "name" => $item->name,
+                "tax_percentage" => $item->tax_percentage,
+            ];
+        }, $data->invoice->invoice_items);
 
 
         if ($data->invoice->payments) {
@@ -412,7 +588,13 @@ class HostedPageController extends Controller
 
         $invoice->save();
 
+        $invoice_count = Invoices::where('zoho_cust_id', $data->subscription->customer->customer_id)->count();
+        $cpc_plan = strpos($data->invoice->invoice_items[0]->code, 'cpc') !== false;
 
+        if ($invoice_count === 1 && $cpc_plan) {
+
+            $this->updateInvoice($data);
+        }
         if ($data->invoice->credits) {
 
             $this->handleCreditNotes($response, $creditnote, $data->invoice->number);
@@ -478,6 +660,7 @@ class HostedPageController extends Controller
             $existingPay->expiry_year = $data->subscription->card->expiry_year;
 
             $existingPay->save();
+
         } else {
 
             $paymentMethod = new PaymentMethod();
@@ -524,6 +707,7 @@ class HostedPageController extends Controller
             $existingPay->expiry_year = '';
 
             $existingPay->save();
+            
         } else {
 
             $paymentMethod = new PaymentMethod();
@@ -688,6 +872,39 @@ class HostedPageController extends Controller
         return json_decode($response);
     }
 
+
+    public function sendMailToAdmin($partnerId)
+    {
+        $admins = Admin::where('receive_mails', 'Yes')->whereHas('mailNotifications', function ($query) {
+            $query->where('plan_purchase_mail', true);
+        })->get();
+
+        $partner = Partner::where('zoho_cust_id',  $partnerId)->first();
+
+        $current_partner_user = PartnerUsers::where('zoho_cpid', Session::get('userId'))->first();
+
+
+        $partner_name = $current_partner_user->first_name . ' ' . $current_partner_user->last_name;
+
+        $partner_company = $partner->company_name;
+
+        $partner_email = $current_partner_user->email;
+
+        $selected_plan = SelectedPlan::where('zoho_cust_id', $partnerId)->first();
+        $selected_plan_id = $selected_plan->plan_id;
+        $plan = Plans::where('plan_id', $selected_plan_id)->first();
+        $plan_name = $plan->plan_name;
+        $plan_price = $plan->price;
+
+        foreach ($admins as $admin) {
+
+            $name = $admin->admin_name;
+
+            Mail::to(users: $admin->email)->send(new PartnerPurchasedPlan($partner_name, $partner_email, $partner_company, $name, $plan_name, $plan_price));
+        }
+    }
+
+
     // public function retrieveCreditNote($creditnote_id)
     // {
     //     $creditnote_url = env('CREDITNOTES_URL');
@@ -745,4 +962,180 @@ class HostedPageController extends Controller
     //         $creditNote->save();
     //     }
     // }
+
+    public function thankyouchargeSubscription(Request $request, CreditNotes $creditnote)
+    {
+
+        $hostedpage_id = $this->extractHostedPageIdFromUrl($request);
+
+        if (!$hostedpage_id) {
+
+            if (Session::has('loginPartner')) {
+
+                return redirect('/')->with('fail', 'Hosted page ID is required.');
+            } else {
+
+                return redirect('/admin/support')->with('fail', 'Hosted page ID is required.');
+            }
+        }
+
+
+        $response = $this->fetchHostedPageData($hostedpage_id);
+
+        $this->handleSubscription($response);
+
+        $this->handleInvoice($response, $creditnote);
+
+        $this->handlePaymentMethod($response);
+
+        $this->handleTerms($response);
+
+        $this->handlePartner($response);
+
+        $zoho_cust_id = $response->data->subscription->customer->customer_id;
+        $partner = Partner::where('zoho_cust_id', $zoho_cust_id)->first();
+
+        $partner->status = "completed";
+        $partner->save();
+        $showModal = false;
+
+        $partner_user = PartnerUsers::where('zoho_cust_id', $partner->zoho_cust_id)->where('is_primary', true)->first();
+        $name = $partner_user->first_name . ' ' . $partner_user->last_name;
+        Mail::to($partner_user->email)->send(new SetupCompleted($name));
+
+        $this->sendSetupMailToAdmin($zoho_cust_id);
+
+        return redirect('/admin/view-partner/' . $partner->id . '/subscriptions')->with('success', 'Subscription created successfully');
+    }
+
+    private function sendSetupMailToAdmin($zoho_cust_id)
+    {
+        $partner = Partner::where('zoho_cust_id', $zoho_cust_id)->first();
+        $partner_user = PartnerUsers::where('zoho_cust_id', $partner->zoho_cust_id)->where('is_primary', true)->first();
+        $availability_data = ProviderAvailabilityData::where('zoho_cust_id', $zoho_cust_id)->first();
+        $company_info = ProviderData::where('zoho_cust_id', $zoho_cust_id)->first();
+        $subscription = Subscriptions::where('zoho_cust_id', $zoho_cust_id)->first();
+        $plan = Plans::where('plan_id', $subscription->plan_id)->first();
+        $payment_method = PaymentMethod::where('zoho_cust_id', $zoho_cust_id)->first();
+        $budget_cap = BudgetCapSettings::where('partner_id', $partner->id)->first();
+
+
+        $file_url = $availability_data->url;
+        $partner_name = $partner_user->first_name;
+        $partner_email = $partner_user->email;
+        $partner_company = $partner->company_name;
+        $file_name = $availability_data->file_name;
+        $presigned_url = $this->generatePresignedUrl($file_url);
+        $url = $company_info->logo_image;
+        $logo_presigned_url = $this->generatePresignedUrl($url);
+        $landing_page_url = $company_info->landing_page_url;
+        $tune_link = $company_info->tune_link;
+        $advertiser_id = $partner->isp_advertiser_id;
+        $subscribed_plan = $plan->plan_name;
+        $payment_method_type = $payment_method->type;
+        $budget_cap = $budget_cap->cost_limit;
+
+
+        $admins = Admin::where('receive_mails', 'Yes')
+            ->whereHas('mailNotifications', function ($query) {
+                $query->where('setup_completion_mail', true);
+            })->get();
+
+        foreach ($admins as $admin) {
+            Mail::to($admin->email)->send(new PartnerSetupMarkedAsCompleted($file_url, $partner_name, $partner_email, $partner_company, $admin->admin_name, $file_name, $presigned_url, $logo_presigned_url, $landing_page_url, $url, $tune_link, $advertiser_id, $subscribed_plan, $payment_method_type, $budget_cap));
+        }
+    }
+
+    private function generatePresignedUrl($objectKey)
+    {
+        try {
+            $command = $this->s3Client->getCommand('GetObject', [
+                'Bucket' => env('AWS_BUCKET'),
+                'Key' => $objectKey,
+            ]);
+
+            try {
+                return (string) $this->s3Client->createPresignedRequest($command, '+20 minutes')->getUri();
+            } catch (\Exception $e) {
+                Log::error('Error generating presigned URL: ' . $e->getMessage());
+            }
+        } catch (AwsException $e) {
+            Log::error('Error generating presigned URL: ' . $e->getMessage());
+        }
+        return;
+    }
+
+
+    private function updateInvoice($data)
+    {
+        $invoiceId = $data->invoice->invoice_id;
+
+        $token = AccessToken::latest('created_at')->first();
+
+        $access_token = $token->access_token;
+
+        $invoice_url = env('INVOICE_URL');
+
+        $client = new \GuzzleHttp\Client();
+
+        $options = [
+            'headers' => [
+                'Authorization' => ('Zoho-oauthtoken ' . $access_token),
+                'X-com-zoho-subscriptions-organizationid' => env('ORGANIZATION_ID'),
+                'content-type: application/json'
+            ],
+            'json' => [
+                'invoice_items' => [
+                    [
+                        "name" => $data->invoice->invoice_items[0]->name,
+                        "quantity" => $data->invoice->invoice_items[0]->quantity,
+                        "price" => $data->invoice->invoice_items[0]->price,
+                        "discount" => $data->invoice->invoice_items[0]->discount_amount,
+                        "unit" => $data->invoice->invoice_items[0]->unit,
+                        "item_total" => $data->invoice->invoice_items[0]->item_total,
+                        "description" => 'Monthly Subscription initiated',
+                    ]
+
+                ],
+                'reason' => 'To notify client'
+            ],
+
+        ];
+
+
+        $res = $client->request(
+            'PUT',
+            $invoice_url . $invoiceId,
+            $options
+        );
+
+        $response = (string) $res->getBody();
+        $response = json_decode($response);
+
+
+        $invoice = Invoices::where('invoice_id', $invoiceId)->first();
+
+
+        $invoice->invoice_items = [
+            "code" =>  $data->invoice->invoice_items[0]->code,
+            "quantity" => $data->invoice->invoice_items[0]->quantity,
+            "item_id" => $data->invoice->invoice_items[0]->item_id,
+            "discount_amount" => $data->invoice->invoice_items[0]->discount_amount,
+            "tax_name" => $data->invoice->invoice_items[0]->tax_name,
+            "description" => $response->invoice->invoice_items[0]->description,
+            "item_total" => $data->invoice->invoice_items[0]->item_total,
+            "item_custom_fields" => $data->invoice->invoice_items[0]->item_custom_fields,
+            "tax_id" => $data->invoice->invoice_items[0]->tax_id,
+            "tags" => $data->invoice->invoice_items[0]->tags,
+            "unit" => $data->invoice->invoice_items[0]->unit,
+            "account_id" => $data->invoice->invoice_items[0]->account_id,
+            "tax_type" => $data->invoice->invoice_items[0]->tax_type,
+            "price" => $data->invoice->invoice_items[0]->price,
+            "product_id" => $data->invoice->invoice_items[0]->product_id,
+            "account_name" => $data->invoice->invoice_items[0]->account_name,
+            "name" => $data->invoice->invoice_items[0]->name,
+            "tax_percentage" => $data->invoice->invoice_items[0]->tax_percentage,
+        ];
+        $invoice->save();
+    }
 }

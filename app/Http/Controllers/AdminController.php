@@ -23,6 +23,7 @@ use App\Models\HostedPageId;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Invoices;
 use App\Models\Refund;
+use App\Models\SelectedPlan;
 use App\Models\Terms;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -149,12 +150,15 @@ class AdminController extends Controller
         }
     }
 
-    public function getInvoices(Request $request)
+    public function getInvoicesOld(Request $request)
     {
         if (Session::has('loginAdmin')) {
             try {
 
-                $query = Invoices::where('status', 'paid');
+                $query = Invoices::join('partners', 'invoices.zoho_cust_id', '=', 'partners.zoho_cust_id')
+                ->where('invoices.status', 'paid');
+
+                // $query = Invoices::where('status', 'paid');
 
                 $startDate = $request->input('start_date');
                 $endDate = $request->input('end_date');
@@ -202,8 +206,7 @@ class AdminController extends Controller
             }
         }
     }
-
-    public function getUnpaidInvoices(Request $request)
+    public function getUnpaidInvoicesOld(Request $request)
     {
         if (Session::has('loginAdmin')) {
             try {
@@ -254,6 +257,99 @@ class AdminController extends Controller
 
                 return redirect('/logout')->with('fail', 'You are logged out! Try to login again.');
             }
+        }
+    }
+
+    public function getInvoices(Request $request)
+    {
+        if (Session::has('loginAdmin')) {
+            try {
+                $request->validate([
+                    'start_date' => 'nullable|date',
+                    'end_date' => 'nullable|date|after_or_equal:start_date',
+                    'search' => 'nullable|string|max:255',
+                    'per_page' => 'nullable|integer|min:1|max:100',
+                ]);
+
+                $query = Invoices::join('partners', 'invoices.zoho_cust_id', '=', 'partners.zoho_cust_id')
+                                ->where('invoices.status', 'paid');
+
+                $startDate = $request->input('start_date');
+                $endDate = $request->input('end_date');
+                if ($startDate && $endDate) {
+                    $query->whereBetween('invoices.created_at', [$startDate, $endDate]);
+                }
+
+                if ($request->has('search')) {
+                    $search = $request->input('search');
+                    $query->where(function ($q) use ($search) {
+                        $q->where('invoices.invoice_number', 'LIKE', "%{$search}%")
+                        ->orWhereRaw("JSON_EXTRACT(invoices.invoice_items, '$') LIKE ?", ["%{$search}%"])
+                        ->orWhere('invoices.zoho_cust_id', 'LIKE', "%{$search}%")
+                        ->orWhere('partners.company_name', 'LIKE', "%{$search}%");
+                    });
+                }
+
+                $perPage = $request->input('per_page', 10);
+
+                $invoices = $query->select('invoices.*', 'partners.company_name')
+                                ->orderByDesc('invoices.invoice_number')
+                                ->paginate($perPage);
+
+                return view('admin.invoices.paid-invoices', compact('invoices'));
+
+            } catch (Exception $e) {
+                \Log::error('Error fetching invoices: ' . $e->getMessage());
+                return redirect('/logout')->with('fail', 'You are logged out! Try to login again.');
+            }
+        }
+
+        return redirect('/login')->with('fail', 'Please log in to continue.');
+    }
+
+    public function getUnpaidInvoices(Request $request)
+    {
+        if (!Session::has('loginAdmin')) {
+            return redirect('/login')->with('fail', 'Please log in to continue.');
+        }
+
+        try {
+            $request->validate([
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'search' => 'nullable|string|max:255',
+                'per_page' => 'nullable|integer|min:1|max:100',
+            ]);
+
+            $query = Invoices::join('partners', 'invoices.zoho_cust_id', '=', 'partners.zoho_cust_id')
+                            ->where('invoices.status', '!=', 'paid');
+
+            $startDate = $request->input('start_date');
+            $endDate = $request->input('end_date');
+            if ($startDate && $endDate) {
+                $query->whereBetween('invoices.created_at', [$startDate, $endDate]);
+            }
+
+            if ($request->filled('search')) {
+                $search = $request->input('search');
+                $query->where(function ($q) use ($search) {
+                    $q->where('invoices.invoice_number', 'LIKE', "%{$search}%")
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(invoices.invoice_items, '$')) LIKE ?", ["%{$search}%"])
+                    ->orWhere('invoices.zoho_cust_id', 'LIKE', "%{$search}%")
+                    ->orWhere('partners.company_name', 'LIKE', "%{$search}%");
+                });
+            }
+
+            $perPage = $request->input('per_page', 10);
+
+            $invoices = $query->select('invoices.*', 'partners.company_name')
+                            ->orderByDesc('invoices.invoice_number')
+                            ->paginate($perPage);
+
+            return view('admin.invoices.unpaid-invoices', compact('invoices'));
+        } catch (\Exception $e) {
+            \Log::error('Error fetching unpaid invoices: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return redirect('/logout')->with('fail', 'An unexpected error occurred. Please log in again.');
         }
     }
 
@@ -327,10 +423,8 @@ class AdminController extends Controller
         foreach ($affiliates as $affiliate) {
             array_push($values, $affiliate->isp_affiliate_id . "(" . $affiliate->domain_name . ")");
         }
-        $plans = Plans::where('price', '!=', 0)->get();
-        $plans = $plans->sortBy('price')->values();
         $lead = null;
-        return view('admin/invite-partner', compact('affiliates', 'plans', 'lead', 'values'));
+        return view('admin/invite-partner', compact('affiliates', 'lead', 'values'));
     }
 
 
@@ -635,6 +729,7 @@ class AdminController extends Controller
         } else {
             $token->getToken();
             $token1 = AccessToken::latest('created_at')->first();
+            $access_token = $token1->access_token;
             return back()->with('fail', 'Kindly Try Again');
         }
         $update_url = env('UPDATE_SUBSCRIPTION_URL');
@@ -642,9 +737,19 @@ class AdminController extends Controller
             $subscription = Subscriptions::where('subscription_number', '=', $support->subscription_number)->first();
             $next_plan = $support->attributes['next_plan'];
             $plan = Plans::where('plan_name', '=', $next_plan)->first();
-
-
             $plan = Plans::where('plan_id', '=', $plan->plan_id)->first();
+
+            $paymentMethod = PaymentMethod::where('zoho_cust_id', $subscription->zoho_cust_id)->first();
+            $trans_fee_enable = env('CARD_TRANS_FEE');
+            $setupFee = 0;
+            $excludeSetupFee = true;
+
+            if ($paymentMethod->type === 'card' && $trans_fee_enable) {
+
+                $transactionFeePercentage = env('TRANSACTION_FEE_PERCENTAGE');
+                $setupFee = $plan->price * ($transactionFeePercentage / 100);
+                $excludeSetupFee = false;
+            }
 
             try {
 
@@ -662,8 +767,10 @@ class AdminController extends Controller
                             "plan_code" => $plan->plan_code,
                             // "plan_description" => $plan->plan_description,
                             // "price" => $plan->price,
-                            "quantity" => 1
+                            "quantity" => 1,
+                            "setup_fee" => $setupFee
                         ],
+                        "exclude_setup_fee" => $excludeSetupFee,
                         "auto_collect" => true,
                         "redirect_url" =>  "$app_url/thankyou-downgrade",
                     ]
@@ -707,6 +814,7 @@ class AdminController extends Controller
                 $token->getToken();
 
                 $token1 = AccessToken::latest('created_at')->first();
+                $access_token = $token1->access_token;
 
                 return back()->with('fail', 'Kindly Try Again');
             }
@@ -809,6 +917,7 @@ class AdminController extends Controller
             } else {
                 $token->getToken();
                 $token1 = AccessToken::latest('created_at')->first();
+                $access_token = $token1->access_token;
             }
 
 

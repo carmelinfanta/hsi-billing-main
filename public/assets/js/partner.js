@@ -209,3 +209,42 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 });
+
+$(document).ready(function () {
+  // When the user selects a role
+  $("select[name='role']").change(function () {
+    var selectedValue = $(this).val();
+    var message = "";
+
+    // Check the selected value and set the corresponding message
+    if (selectedValue === "user") {
+      message =
+        "This user will have access to Billing Portal and receive email notifications";
+    } else if (selectedValue === "billing_contact") {
+      message = "This user will only receive billing email notifications";
+    } else {
+      message = ""; // Reset the message if no role is selected
+    }
+
+    // Update the message on the page
+    $("#billing_message").text(message);
+  });
+
+  $("select[name='role1']").change(function () {
+    var selectedValue1 = $(this).val();
+    var message1 = "";
+
+    // Check the selected value and set the corresponding message
+    if (selectedValue1 === "user") {
+      message1 =
+        "This user will have access to Billing Portal and receive email notifications";
+    } else if (selectedValue1 === "billing_contact") {
+      message1 = "This user will only receive billing email notifications";
+    } else {
+      message1 = ""; // Reset the message if no role is selected
+    }
+
+    // Update the message on the page
+    $("#billing_message1").text(message1);
+  });
+});

@@ -9,7 +9,7 @@ class CreditNotes extends Model
 {
     use HasFactory;
 
-    public function retrieveCreditNote($creditnote_id)
+    public function retrieveCreditNote($creditnote_id, $invoiceNumber)
     {
         $creditnote_url = env('CREDITNOTES_URL');
         $token1 = AccessToken::latest('created_at')->first();
@@ -61,7 +61,7 @@ class CreditNotes extends Model
             if ($data->invoices) {
                 $creditNote->invoice_number = $data->invoices[0]->invoice_number;
             } else {
-                $creditNote->invoice_number = "-";
+                $creditNote->invoice_number = $invoiceNumber;
             }
             $creditNote->credited_amount = $data->total;
             $creditNote->balance = $data->balance;

@@ -40,6 +40,7 @@ services:
       context: .
       target: base
       dockerfile: ops/docker/Dockerfile
+    working_dir: /app
     volumes:
       - ./:/app
       - ${HOME}/.aws:/home/www-data/.aws:ro

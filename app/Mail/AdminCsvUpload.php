@@ -45,7 +45,7 @@ class AdminCsvUpload extends Mailable
     {
         return new Envelope(
 
-            subject: 'New AOA File Upload - ' . $this->partner_company . ' ',
+            subject: 'Partner Data Has Been Submitted - ' . $this->partner_company . ' ',
         );
     }
 

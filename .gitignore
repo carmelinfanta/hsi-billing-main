@@ -51,6 +51,7 @@ Thumbs.db
 
 #Env files
 .env
+
 *secrets.env
 
 # Dependencies are ran as build stage
@@ -61,3 +62,5 @@ vendor
 
 storage/
 app/Http/Controllers/PartnerController.php--old
+auth.json
+

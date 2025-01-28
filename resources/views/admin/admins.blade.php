@@ -10,7 +10,7 @@
             </div>
             <div>
                 <div class=" d-flex justify-content-center align-items-center mt-3 ">
-                    <a data-bs-toggle="modal" data-bs-target="#exampleModal" class="btn mb-1 btn-primary">Invite an Admin</a>
+                    <a href="/admin/invite" class="btn mb-1 btn-primary">Invite an Admin</a>
                 </div>
             </div>
         </div>
@@ -94,10 +94,10 @@
                     <td data-label="Email">{{$admin->email}}</td>
                     <td data-label="Role">{{$admin->role}}</td>
                     <td data-label="Mail Notifications">{{$admin->receive_mails}}</td>
-                    <td data-label="Change Role"><button data-bs-toggle="modal" data-bs-target="#editAdmin{{$admin->id}}" class="btn btn-primary">Edit</button></td>
+                    <td data-label="Change Role"><a href="/admin/admins/{{$admin->id}}" class="btn btn-primary">Edit</button></td>
                     <td data-label="Delete"><button data-bs-toggle="modal" data-bs-target="#deleteModal{{$admin->id}}" class="btn button-clearlink text-primary fw-bold">Delete</button></td>
                 </tr>
-                <div class="modal fade" id="editAdmin{{$admin->id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                <!-- <div class="modal fade" id="editAdmin{{$admin->id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-dialog-scrollable">
                         <div class="modal-content bg-popup">
                             <div class=" modal-header">
@@ -141,7 +141,7 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </div> -->
 
                 <div class="modal fade" id="deleteModal{{$admin->id}}" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-centered ">
@@ -191,7 +191,7 @@
     </div>
     @endif
 </div>
-<div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+<!-- <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content bg-popup">
             <div class=" modal-header">
@@ -231,7 +231,7 @@
             </div>
         </div>
     </div>
-</div>
+</div> -->
 
 
 

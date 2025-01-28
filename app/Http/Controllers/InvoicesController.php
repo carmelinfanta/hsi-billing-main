@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AccessToken;
 use App\Models\Invoices;
 use App\Models\Partner;
+use App\Models\PaymentMethod;
 use App\Models\ProviderAvailabilityData;
 use App\Models\ProviderData;
 use Exception;
@@ -24,7 +25,7 @@ class InvoicesController extends Controller
 
                 $partnerId = Session::get('loginId');
 
-                $query = Invoices::where('zoho_cust_id', $partnerId);
+                $query = Invoices::where('zoho_cust_id', $partnerId)->where('first_cpc', false);
 
                 $startDate = $request->input('start_date');
                 $endDate = $request->input('end_date');
@@ -55,11 +56,13 @@ class InvoicesController extends Controller
                 $partner = Partner::where('zoho_cust_id', Session::get('loginId'))->first();
                 $availability_data = ProviderAvailabilityData::where('zoho_cust_id', Session::get('loginId'))->first();
                 $company_info = ProviderData::where('zoho_cust_id', Session::get('loginId'))->first();
+                $paymentmethod = PaymentMethod::where('zoho_cust_id', $partner->zoho_cust_id)->first();
+
 
                 // if ($availability_data === null || $company_info === null) {
                 //     $showModal = true;
                 // }
-                return view('partner.invoices', compact('invoices', 'showModal', 'availability_data', 'company_info'));
+                return view('partner.invoices', compact('invoices', 'showModal', 'availability_data', 'company_info', 'paymentmethod'));
             } catch (Exception $e) {
 
                 return redirect('/logout')->with('fail', 'You are logged out! Try to login again.');
@@ -80,6 +83,7 @@ class InvoicesController extends Controller
             $token->getToken();
 
             $token1 = AccessToken::latest('created_at')->first();
+            $access_token = $token1->access_token;
 
             return back()->with('fail', 'Kindly Try Again');
         }
@@ -139,13 +143,7 @@ class InvoicesController extends Controller
 
             $response = $e->getResponse()->getBody(true);
             $response = json_decode($response);
-
-            if ($response->message === "You are not authorized to perform this operation") {
-
-                $token->getToken();
-
-                return back()->with('fail', 'Kindly Subscribe Again!');
-            }
+            return back()->with('fail', $response->message);
         }
     }
 

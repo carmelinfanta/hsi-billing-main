@@ -48,13 +48,19 @@ class ApiController extends Controller
             'revoked' => false,
             'secret' => $plainSecret
         ]);
-        
+//dd($result);
+        // Generate the token using the model's static method
+        // $result = ApiToken::generateToken(
+        //     $request->input('description'),
+        //     $expiresInDays
+        // );
         return response()->json([
             'name' => $request->name,
             'client_id' => $result->id,
             'client_secret' => $plainSecret,
             'expires_in_days' => $expiresInDays,
         ]);
+        //return response()->json($result);
     }
 
     public function revoke(Request $request) {

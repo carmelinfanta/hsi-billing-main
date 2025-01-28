@@ -91,11 +91,13 @@
           <td data-label="Company">{{$partner->company_name}}</td>
           <td data-label="Status" class="status">
             @if($partner->status ==='active')
-            <span class="badge-success">{{ $partner->status }}</span>
+            <span class="badge-warning">Setup In Progress</span>
             @elseif($partner->status ==='inactive')
             <span class="badge-fail">{{ $partner->status }}</span>
             @elseif($partner->status === 'Invited')
             <span class="badge-revoked">{{ $partner->status }}</span>
+            @elseif($partner->status === 'completed')
+            <span class="badge-success p-1 status ms-3 mb-2">Setup Completed</span>
             @endif
           </td>
           <td><a href="view-partner/{{$partner->id}}" class="btn button-clearlink text-primary fw-bold">View Details</a></td>

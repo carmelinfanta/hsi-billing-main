@@ -9,4 +9,4 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:api');
 
 
-Route::post('/aoa-status', [WebhookController::class, 'updateAOAStatus'])->middleware('client');
+Route::post('/aoa-status', [WebhookController::class, 'updateAOAStatus']); //->middleware('auth:api');

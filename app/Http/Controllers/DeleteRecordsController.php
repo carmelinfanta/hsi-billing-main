@@ -27,8 +27,8 @@ class DeleteRecordsController extends Controller
         DB::table('partners')->delete();
         DB::table('supports')->delete();
         DB::table('terms')->delete();
-        DB::table('features')->delete();
-        DB::table('plans')->delete();
+        // DB::table('features')->delete();
+        // DB::table('plans')->delete();
         DB::table('leads')->delete();
         // DB::table('affiliates')->delete();
         DB::table('partners_affiliates')->delete();

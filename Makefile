@@ -68,7 +68,7 @@ test:
 	@echo ${PIPELINE}
 
 CFN_ARGS ?= --auto
-PIPELINE_IMAGE ?= "public.ecr.aws/cldevops/pipeline-tools:21"
+PIPELINE_IMAGE ?= "public.ecr.aws/cldevops/pipeline-tools:27"
 PIPELINE_RUN = docker run -w /app -v $$(pwd)/:/app
 PIPELINE_BASE = $(PIPELINE_RUN) -v $(HOME)/.aws:/root/.aws
 PIPELINE = ${PIPELINE_BASE} \

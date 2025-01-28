@@ -14,6 +14,7 @@ use App\Models\AddOn;
 use App\Models\Admin;
 use App\Models\enterprise;
 use App\Models\PartnerUsers;
+use App\Models\PaymentMethod;
 use App\Models\ProviderAvailabilityData;
 use App\Models\ProviderData;
 use App\Models\Support;
@@ -86,12 +87,10 @@ class SupportController extends Controller
         $partner = Partner::where('zoho_cust_id', Session::get('loginId'))->first();
         $availability_data = ProviderAvailabilityData::where('zoho_cust_id', Session::get('loginId'))->first();
         $company_info = ProviderData::where('zoho_cust_id', Session::get('loginId'))->first();
+        $paymentmethod = PaymentMethod::where('zoho_cust_id', $partner->zoho_cust_id)->first();
 
-        // if ($availability_data === null || $company_info === null) {
-        //   $showModal = true;
-        // }
 
-        return view('partner.support', compact('supports', 'showModal', 'availability_data', 'company_info'));
+        return view('partner.support', compact('supports', 'showModal', 'availability_data', 'company_info', 'paymentmethod'));
       } catch (Exception $e) {
 
         return redirect('/logout')->with('fail', 'You are logged out! Try to login again.');
@@ -329,7 +328,9 @@ class SupportController extends Controller
 
   public function sendMailToAdmin($support, $partner, $partner_user)
   {
-    $admins = Admin::where('receive_mails', 'Yes')->get();
+    $admins = Admin::where('receive_mails', 'Yes')->whereHas('mailNotifications', function ($query) {
+      $query->where('support_ticket_mail', true);
+    })->get();
 
     $request_type = $support->request_type;
     $req_message = $support->message;

@@ -37,18 +37,18 @@ class AdminSeeder extends Seeder
                 'role' => 'SuperAdmin',
                 'receive_mails' => 'No',
             ],
-            [
-                'admin_name' => 'Lindsay Smith',
-                'email' => 'lindsay.smith@clearlink.com',
-                'role' => 'SuperAdmin',
-                'receive_mails' => 'No',
-            ],
-            [
-                'admin_name' => 'Mandi Coleman',
-                'email' => 'mandi.coleman@clearlink.com',
-                'role' => 'Admin',
-                'receive_mails' => 'No',
-            ]
+            // [
+            //     'admin_name' => 'Lindsay Smith',
+            //     'email' => 'lindsay.smith@clearlink.com',
+            //     'role' => 'SuperAdmin',
+            //     'receive_mails' => 'No',
+            // ],
+            // [
+            //     'admin_name' => 'Mandi Coleman',
+            //     'email' => 'mandi.coleman@clearlink.com',
+            //     'role' => 'Admin',
+            //     'receive_mails' => 'No',
+            // ]
         ];
 
         foreach ($admins as $admin) {

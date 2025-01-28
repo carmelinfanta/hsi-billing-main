@@ -29,11 +29,6 @@ class LeadController extends Controller
 {
     public function getLeads(Request $request)
     {
-        $existing_partner = Partner::where('isp_advertiser_id', $request->advertiser_id)->first();
-
-        if ($existing_partner) {
-            return back()->with('fail', 'Advertiser Id already exists');
-        }
         $query = Leads::query();
 
         $startDate = $request->input('start_date');

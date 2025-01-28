@@ -15,6 +15,7 @@ use Illuminate\Validation\Rules\Password;
 
 use App\Mail\ResetPassword;
 use App\Mail\OtpMail;
+use App\Mail\PartnerCompletedSignup;
 use App\Models\Partner;
 use App\Models\Admin;
 use App\Models\PartnerAddress;
@@ -29,6 +30,7 @@ use App\Models\PasswordTokenPartner;
 use App\Models\PasswordTokenPartnerUser;
 use App\Models\ProviderAvailabilityData;
 use App\Models\ProviderData;
+use App\Models\SelectedPlan;
 use App\Models\Subscriptions;
 use App\Models\Users;
 
@@ -79,13 +81,13 @@ class UserAuthController extends Controller
 
             if (Hash::check($request->password, $partnerUser->password)) {
 
-                $partner = Partner::where('zoho_cust_id', $partnerUser->zoho_cust_id)->where('status', 'active')->first();
+                $partner = Partner::where('zoho_cust_id', $partnerUser->zoho_cust_id)->whereIn('status', ['active', 'completed'])->first();
 
                 if ($partner) {
 
-                    if ($partner->status === 'active') {
+                    if ($partner->status === 'active' || 'completed') {
 
-                        if ($partnerUser->status === 'active') {
+                        if ($partnerUser->status === 'active' || 'completed') {
 
                             $this->sendOtpAndRedirect($partnerUser->email);
 
@@ -166,13 +168,17 @@ class UserAuthController extends Controller
 
             OtpPartnerUser::where('email', $user->email)->delete();
 
+            $selected_plan = SelectedPlan::where('zoho_cust_id', $user->zoho_cust_id)->first();
+
             if ($availability_data === null || $provider_data === null) {
                 return redirect('/provider-info')->with('success', 'Logged in successfully');
             } else {
                 if ($subscription) {
                     return redirect('/clicks-report')->with('success', 'Logged in successfully');
+                } else if ($selected_plan === null) {
+                    return redirect('/select-plans')->with('success', 'Logged in successfully');
                 } else {
-                    return redirect('/')->with('success', 'Logged in successfully');
+                    return redirect('/subscription')->with('success', 'Logged in successfully');
                 }
             }
         } else {
@@ -247,13 +253,28 @@ class UserAuthController extends Controller
                 $provider_data = ProviderData::where('zoho_cust_id', $user->zoho_cust_id)->first();
                 $availability_data = ProviderAvailabilityData::where('zoho_cust_id', $user->zoho_cust_id)->first();
                 $subscription =  Subscriptions::where('zoho_cust_id', $user->zoho_cust_id)->first();
-                if ($availability_data === null || $provider_data === null) {
-                    return redirect('/provider-info')->with('success', 'Logged in successfully');
+                $selected_plan = SelectedPlan::where('zoho_cust_id', $user->zoho_cust_id)->first();
+                $admins = Admin::where('receive_mails', 'Yes')->whereHas('mailNotifications', function ($query) {
+                    $query->where('partner_signup_mail', true);
+                })->get();
+                $partner_name = $user->first_name . ' ' . $user->last_name;
+
+                $partner_company = $partner->company_name;
+
+                $partner_email = $user->email;
+                foreach ($admins as $admin) {
+
+                    $name = $admin->admin_name;
+
+                    Mail::to(users: $admin->email)->send(new PartnerCompletedSignup($partner_name, $partner_email, $partner_company, $name));
+                }
+                if ($selected_plan === null) {
+                    return redirect('/select-plans')->with('success', 'Logged in successfully');
                 } else {
                     if ($subscription) {
-                        return redirect('/')->with('success', 'Logged in successfully');
-                    } else {
                         return redirect('/clicks-report')->with('success', 'Logged in successfully');
+                    } else {
+                        return redirect('/subscription')->with('success', 'Logged in successfully');
                     }
                 }
             }
@@ -304,7 +325,6 @@ class UserAuthController extends Controller
         ]);
 
         $admin = Admin::where('email', $request->email)->first();
-
         if ($admin) {
             if (Hash::check($request->password, $admin->password)) {
                 if ($admin->admin_last_logged_in) {
@@ -325,8 +345,8 @@ class UserAuthController extends Controller
                     $otpEntry->save();
 
                     Mail::to($admin->email)->send(new OtpMail($otp));
-
-                    return redirect()->route('admin.verify.otp.form')->with('email', $admin->email);
+                    session()->put('email', $admin->email);
+                    return redirect()->route('admin.verify.otp.form');
                 } else {
 
                     $token = new PasswordTokenAdmin();

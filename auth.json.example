@@ -1,0 +1,8 @@
+{
+  "http-basic": {
+    "clearlink.repo.repman.clearlink.com": {
+      "username": "token", 
+      "password": ""
+    }
+  }
+}

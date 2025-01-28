@@ -1,39 +1,41 @@
 <?php
 
-use Illuminate\Support\Facades\Mail;
-use App\Http\Controllers\AddOnController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\PlansController;
-use App\Http\Controllers\SubscriptionsController;
-use App\Http\Controllers\InvoicesController;
-use App\Http\Controllers\UserAuthController;
-use App\Http\Controllers\PartnerController;
-use App\Http\Controllers\SupportController;
-use App\Http\Controllers\AdminController;
-use App\Http\Controllers\AffiliateController;
-use App\Http\Controllers\CreditNotesController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\HostedPageController;
-use App\Http\Controllers\WebhookController;
-use App\Http\Controllers\DeleteRecordsController;
-use App\Http\Controllers\ClicksController;
-use App\Http\Controllers\LeadController;
-use App\Http\Controllers\PartnersAffiliatesController;
-use App\Http\Controllers\PartnerUsersController;
-use App\Http\Controllers\PlanFeaturesController;
-use App\Http\Controllers\ProviderDataController;
-use App\Http\Controllers\SignupController;
-use App\Http\Controllers\SuperAdminController;
-use App\Http\Controllers\ClicksEmailAlertController;
-use App\Http\Controllers\PartnerClicksController;
-use App\Http\Controllers\ApiController;
-
 use App\Mail\Email;
 use App\Mail\ClickUsage;
 use App\Models\Plans;
 use League\Csv\Query\Row;
 
-Route::get('/download/{filepath}', [ProviderDataController::class, 'downloadS3Files'])->where('filepath', '.*')->middleware(['isLoggedIn','isAdmin']);
+use App\Http\Controllers\{
+    AddOnController,
+    PlansController,
+    SubscriptionsController,
+    InvoicesController,
+    UserAuthController,
+    PartnerController,
+    SupportController,
+    AdminController,
+    AffiliateController,
+    CreditNotesController,
+    ProfileController,
+    HostedPageController,
+    WebhookController,
+    DeleteRecordsController,
+    ClicksController,
+    LeadController,
+    PartnersAffiliatesController,
+    PartnerUsersController,
+    PlanFeaturesController,
+    ProviderDataController,
+    SignupController,
+    SuperAdminController,
+    ClicksEmailAlertController,
+    PartnerClicksController,
+    ApiController
+};
+
+Route::get('/download/{filepath}', [ProviderDataController::class, 'downloadS3Files'])->where('filepath', '.*')->middleware(['isLoggedIn', 'isAdmin']);
+
 //Login and Password Management
 Route::middleware('alreadyLoggedIn')->group(function () {
 
@@ -49,11 +51,13 @@ Route::middleware('alreadyLoggedIn')->group(function () {
 
     Route::post('/signup-partner', [SignupController::class, 'signupPartner']);
 
+    Route::post('/download', [ProviderDataController::class, 'downloadS3Files']);
 });
 
 Route::get('/logout', [UserAuthController::class, 'logout']);
 
 Route::get('/reset-password', [UserAuthController::class, 'resetView']);
+
 Route::post('/forgot-password', [UserAuthController::class, 'forgotPassword']);
 
 Route::post('/reset-password', [UserAuthController::class, 'resetPassword']);
@@ -73,7 +77,9 @@ Route::post('/verify-otp-signup', [SignupController::class, 'verifySignupOtp'])-
 Route::get('/resend-otp-signup', [SignupController::class, 'resendSignupOtp'])->name('resend.otp.signup');
 
 Route::post('/upload-csv', [SignupController::class, 'uploadAndProcessCSV']);
+
 Route::post('/save-provider-data-signup', [SignupController::class, 'saveProviderData']);
+
 Route::post('/register', [SignupController::class, 'registerLead']);
 
 Route::get('/register-success', [SignupController::class, 'registerSuccess']);
@@ -89,6 +95,7 @@ Route::post('/admin/verify-otp', [UserAuthController::class, 'verifyAdminOtp'])-
 Route::get('/admin/resend-otp', [UserAuthController::class, 'resendAdminOtp'])->name('admin.resend.otp');
 
 Route::get('/admin/reset-password', [UserAuthController::class, 'adminResetView']);
+
 Route::post('/admin/forgot-password', [UserAuthController::class, 'adminForgotPassword']);
 
 Route::post('/admin/reset-password', [UserAuthController::class, 'adminResetPassword']);
@@ -98,7 +105,7 @@ Route::get('/admin/reset-mail', [UserAuthController::class, 'adminResetMail']);
 Route::get('/admin/change-password/{token}', [UserAuthController::class, 'adminChangePassword']);
 
 // Partner Routes
-Route::middleware(['isLoggedIn', 'isPartner'])->group(function () {
+Route::middleware(['isLoggedIn', 'isPartner', 'checkSubscription', 'isPlanSelected', 'checkPartnerSubscription'])->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'getProfile']);
 
@@ -109,15 +116,23 @@ Route::middleware(['isLoggedIn', 'isPartner'])->group(function () {
     Route::post('/update-address', [ProfileController::class, 'updateAddress']);
 
     Route::get('/', [PlansController::class, 'getPlan'])->name('partner.plans');
+
     Route::get('/get-addon', [AddOnController::class, 'getAddon']);
     Route::get('/select-addon/{code}', [AddOnController::class, 'selectAddon']);
 
     Route::get('/change-plan/{id}', [PlansController::class, 'changePlan']);
+
     Route::get('/subscribe-plan/{id}', [PlansController::class, 'subscribePlan']);
+
     Route::get('/addon-plan/{id}', [PlansController::class, 'addonPlan']);
+
     Route::get('/multi-addon', [PlansController::class, 'multiAddonPlan']);
+
+    Route::get('/select-plans', [PlansController::class, 'selectPlans']);
+    Route::get('/select-plan/{plan_id}', [PlansController::class, 'selectedPlan']);
     Route::get('/subscribe-custom-plan/{id}/{hostedpageId}/{partnerId}', [PlansController::class, 'subscribeCustomPlan']);
     Route::get('/no-selected-plans', [PartnerController::class, 'noSelectedPlans']);
+    Route::get('/add-payment-method/{id}', [PlansController::class, 'addPaymentMethod']);
 
 
     Route::get('/subscription', [SubscriptionsController::class, 'getSubscription']);
@@ -125,9 +140,13 @@ Route::middleware(['isLoggedIn', 'isPartner'])->group(function () {
     Route::get('/subscribe-update/{id}', [SubscriptionsController::class, 'updateSubscription']);
     Route::post('/upgrade', [SubscriptionsController::class, 'upgradeSubscription']);
     Route::get('/update-payment-method/{id}', [SubscriptionsController::class, 'updatePaymentMethod']);
+    Route::get('/add-new-payment-method/{id}', [SubscriptionsController::class, 'associateNewPaymentMethod']);
+    Route::post('/switch-payment-method', [SubscriptionsController::class, 'switchPaymentMethod']);
+
     Route::get('/delete-payment-method/{id}', [SubscriptionsController::class, 'deletePaymentMethod']);
     Route::post('/metered-billing', [SubscriptionsController::class, 'updateMeteredBilling'])->name('metered.billing.update');
     Route::get('/create-addon/{id}', [AddOnController::class, 'createAddon']);
+
 
     Route::get('/invoices', [InvoicesController::class, 'getInvoice'])->name('partner.invoices');
     Route::post('/record-payment', [InvoicesController::class, 'recordPayment']);
@@ -149,7 +168,6 @@ Route::middleware(['isLoggedIn', 'isPartner'])->group(function () {
     Route::post('/upload-csv', [ProviderDataController::class, 'uploadAndProcessCSV'])->name('upload.csv');
     Route::post('/save-provider-data', [ProviderDataController::class, 'saveProviderData']);
     Route::post('/update-provider-data', [ProviderDataController::class, 'updateProviderData']);
-    Route::post('/send-details', [ProviderDataController::class, 'sendDetailToAdmin']);
 
 
     Route::post('/click-limit-notification', [ClicksController::class, 'clicksLimitReminder']);
@@ -161,6 +179,8 @@ Route::middleware(['isLoggedIn', 'isPartner'])->group(function () {
 
 // Admin Routes
 Route::middleware(['isAdminLoggedIn', 'isAdmin'])->group(function () {
+
+    Route::post('/get-plans', [PlansController::class, 'getPlan']);
 
     Route::post('/add-plans', [PlansController::class, 'addPlans']);
     Route::get('/sync-plans', [PlansController::class, 'updatePlans']);
@@ -179,6 +199,8 @@ Route::middleware(['isAdminLoggedIn', 'isAdmin'])->group(function () {
     Route::get('/admin/view-partner/{id}/provider-data', [PartnerController::class, 'viewPartnerProviderData'])->name('view.partner.providerdata');
     Route::get('/admin/view-partner/{id}/clicks-data', [PartnerController::class, 'viewPartnerClicksData'])->name('view.partner.clicksdata');
     Route::get('/admin/view-partner/{id}/export-clicks', [PartnerController::class, 'exportClicksReport'])->name('view.partner.reports.export');
+    Route::post('/update-toggle', [PartnerController::class, 'updateToggle'])->name('update.toggle');
+    Route::post('/update-limit', [PartnerController::class, 'updateLimit']);
     Route::get('/admin/view-partner/{id}/', [PartnerController::class, 'viewPartnerOverview'])->name('view.partner.overview');
     Route::get('/admin/view-partner/{id}/refunds', [PartnerController::class, 'viewPartnerRefunds'])->name('view.partner.refunds');;
     Route::post('/upload-provider-data', [PartnerController::class, 'uploadProviderData']);
@@ -187,9 +209,9 @@ Route::middleware(['isAdminLoggedIn', 'isAdmin'])->group(function () {
     Route::post('/add-affiliate-id', [PartnerController::class, 'addAffiliate']);
     Route::post('/add-custom-invoice', [PartnerController::class, 'addCustomInvoice']);
     Route::post('/refund-a-payment', [PartnerController::class, 'refundPayment']);
-
-
-
+    Route::post('/charge-subscription', [SubscriptionsController::class, 'chargeSubscription']);
+    Route::post('/send-details', [ProviderDataController::class, 'sendDetailToAdmin']);
+    Route::get('/get-plans', [PartnerController::class, 'getPlans']);
 
     Route::post('/remove-affiliate', [PartnerController::class, 'removeAffiliate']);
     Route::post('/update-partner', [PartnerController::class, 'updatePartner']);
@@ -208,6 +230,7 @@ Route::middleware(['isAdminLoggedIn', 'isAdmin'])->group(function () {
     Route::get('/admin/view-partner/disable-user/{id}', [PartnerUsersController::class, 'disablePartnerUser']);
     Route::get('/admin/view-partner/reactivate-user/{id}', [PartnerUsersController::class, 'reactivatePartnerUser']);
     Route::get('/admin/view-partner/mark-primary/{id}', [PartnerUsersController::class, 'markAsPrimary']);
+
 
 
     //Leads
@@ -285,16 +308,19 @@ Route::middleware(['isAdminLoggedIn', 'isAdmin'])->group(function () {
     // Deletion (Staging Only)
     if (env('APP_ENV') === 'staging') {
 
-        Route::get('/delete-records', [DeleteRecordsController::class, 'deleteRecords']);
+        Route::get('/admin/delete-records', [DeleteRecordsController::class, 'deleteRecords']);
     }
 });
 
-Route::middleware(['isLoggedIn'])->group(function () {
+Route::middleware(['isLoggedIn', 'checkSubscription', 'isPlanSelected'])->group(function () {
 
     Route::get('/thankyou-create', [HostedPageController::class, 'thankyouCreate']);
     Route::get('/thankyou-update', [HostedPageController::class, 'thankyouUpdate']);
+    Route::get('/thankyou-new-payment-method', [HostedPageController::class, 'addNewPaymentMethod']);
     Route::get('/thankyou-downgrade', [HostedPageController::class, 'thankyouDowngrade']);
+    Route::get('/thankyou-charge-subscription', [HostedPageController::class, 'thankyouChargeSubscription']);
     Route::get('/add-payment-method', [HostedPageController::class, 'addPaymentMethod']);
+    Route::get('/add-payment', [HostedPageController::class, 'addPayment']);
     Route::get('/cancel-subscription/{id}', [SubscriptionsController::class, 'cancelSubscription']);
     Route::post('/create-subscription', [SubscriptionsController::class, 'createSubscription']);
     Route::post('/upgrade', [SubscriptionsController::class, 'upgradeSubscription']);
@@ -304,9 +330,16 @@ Route::middleware(['isLoggedIn'])->group(function () {
 Route::middleware(['isAdminLoggedIn', 'isSuperAdmin'])->group(function () {
 
     Route::get('/admin/admins', [SuperAdminController::class, 'getAdmins'])->name('admin.admins');
+
     Route::get('/admin/api-clients', [ApiController::class, 'index'])->name('api-client.index');
+
     Route::post('/oauth/create-client', [ApiController::class, 'store'])->name('api-client.store');
+
     Route::delete('/oauth/revoke-client/{id}', [ApiController::class, 'revoke'])->name('api-client.revoke');
+
+    Route::get('/admin/invite', [SuperAdminController::class, 'viewInviteAdmin']);
+
+    Route::get('/admin/admins/{id}', [SuperAdminController::class, 'viewEditAdmin']);
 
     Route::post('/invite-admin', [SuperAdminController::class, 'inviteAdmin']);
 

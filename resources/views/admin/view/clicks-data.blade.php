@@ -2,235 +2,240 @@
 
 @section('child-content')
 
-<div style="width:80%" class="d-flex flex-row justify-content-between mt-5">
-    <div>
-        <h5 class="fw-bold">Clicks Data</h5>
-    </div>
-</div>
-
-<div style="width:80%" class="top-row mt-4">
-    <div class="row">
-        <div class="col-md-11">
-            <form method="GET" action="{{ route('view.partner.clicksdata', ['id' => $partner->id], false) }}" class="mt-3 mb-3">
-                <div class="row">
-
-                    <div class="col-md">
-                        <div class="form-group">
-                            <label for="date_from">From Date</label>
-                            <input type="date" name="date_from" id="date_from" class="form-control" value="{{ request('date_from') }}">
-                        </div>
-                    </div>
-                    <div class="col-md">
-                        <div class="form-group">
-                            <label for="date_to">To Date</label>
-                            <input type="date" name="date_to" id="date_to" class="form-control" value="{{ request('date_to') }}">
-                        </div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="form-group">
-                            <label for="filter">Time Period</label>
-                            <select name="filter" id="filter" class="form-control">
-                                <option value="last_12_months" {{ $filter == 'last_12_months' ? 'selected' : '' }}>Last 12 Months</option>
-                                <option value="last_6_months" {{ $filter == 'last_6_months' ? 'selected' : '' }}>Last 6 Months</option>
-                                <option value="last_3_months" {{ $filter == 'last_3_months' ? 'selected' : '' }}>Last 3 Months</option>
-                                <option value="last_1_month" {{ $filter == 'last_1_month' ? 'selected' : '' }}>Last 1 Month</option>
-                                <option value="last_7_days" {{ $filter == 'last_7_days' ? 'selected' : '' }}>Last 7 Days</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="col-md-2">
-                        <div class="form-group">
-                            <label for="data_split">Show data by</label>
-
-                            <select name="data_split" id="data_split" class="form-control">
-                                <option value="monthly" {{ $dataSplit == 'monthly' ? 'selected' : '' }}>Month</option>
-                                <option value="weekly" {{ $dataSplit == 'weekly' ? 'selected' : '' }}>Week</option>
-                                <option value="daily" {{ $dataSplit == 'daily' ? 'selected' : '' }}>Day</option>
-                            </select>
-
-                        </div>
-                    </div>
-                    <div class="col-md-3 form-group mt-3">
-                        <label for="affiliate_ids">Filter by Affiliate IDs:</label>
-
-                        <div class="custom-dropdown-filter">
-                            <div class="custom-dropdown-button rounded">
-                                <div class="tags-container"><input type="hidden" id="hiddenSelect" name="affiliate_ids[]" /></div>
-                                <i class="fas fa-chevron-down dropdown-icon text-secondary"></i>
-                            </div>
-                            <div class="custom-dropdown-content">
-                                @foreach($affiliates as $affiliate)
-                                <option class="custom-option p-1" data-value="{{$affiliate->isp_affiliate_id}}({{$affiliate->domain_name}})" {{ in_array($affiliate->isp_affiliate_id, $affiliateIdsArray) ? 'selected' : '' }}>{{$affiliate->isp_affiliate_id}}({{$affiliate->domain_name}})</option>
-                                @endforeach
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2 mt-3">
-                        <label for=""></label>
-                        <button type="submit" class="btn  button-clearlink text-primary fw-bold mt-4 ms-4">Apply</button>
-                    </div>
-                    <div class="col-md-2 mt-3">
-                        <a href="{{ route('view.partner.reports.export', ['id' => $partner->id,'filter' => $filter, 'data_split' => $dataSplit], false) }}" class="btn btn-primary btn-sm mt-4">Download CSV</a>
-                    </div>
+    <div class="container">
+        <!-- Filter Form -->
+        <form method="GET" action="{{ route('view.partner.clicksdata', [$partner->id], false) }}" class="mb-1 mt-4">
+            <div class="row">
+                <!-- Filter Dropdown -->
+                <div class="col-md-2 mb-3">
+                    <label for="filter" class="fw-bold">Filter:</label>
+                    <select name="filter" class="form-control" id="filter">
+                        @foreach (['mtd' => 'Month to Date', 'last_12_months' => 'Last 12 Months', 'last_6_months' => 'Last 6 Months', 'last_3_months' => 'Last 3 Months', 'last_1_month' => 'Last 1 Month', 'last_month' => 'Last Month', 'last_7_days' => 'Last 7 Days', 'custom' => 'Custom Range'] as $value => $label)
+                            <option value="{{ $value }}" @selected(request('filter') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
                 </div>
-            </form>
-        </div>
+
+                <!-- Custom Date Range -->
+                <div class="col-md-2 mb-3 date-range" style="display: none;">
+                    <label for="date_from" class="fw-bold">From Date</label>
+                    <input type="date" name="date_from" id="date_from" class="form-control"
+                        value="{{ \Carbon\Carbon::parse($dateFrom)->format('Y-m-d') }}">
+                </div>
+                <div class="col-md-2 mb-3 date-range" style="display: none;">
+                    <label for="date_to" class="fw-bold">To Date</label>
+                    <input type="date" name="date_to" id="date_to" class="form-control"
+                        value="{{ \Carbon\Carbon::parse($dateTo)->format('Y-m-d') }}">
+                </div>
+
+                <!-- Data Split Dropdown -->
+                <div class="col-md-2 mb-3">
+                    <label for="data_split" class="fw-bold">Data Split:</label>
+                    <select name="data_split" class="form-control" id="data_split">
+                        @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $value => $label)
+                            <option value="{{ $value }}" @selected(request('data_split') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <!-- Apply Button -->
+                <div class="col-md-1 d-flex align-items-end mb-3">
+                    <button type="submit" class="btn button-clearlink text-primary fw-bold">Apply</button>
+                </div>
+
+                <!-- Export Button -->
+                <div class="col-md-1 d-flex align-items-end mb-3 me-4">
+                    <a href="{{ route(
+                        'view.partner.reports.export',
+                        [
+                            'id' => $partner->id,
+                            'filter' => request('filter', 'mtd'),
+                            'data_split' => request('data_split', 'daily'),
+                            'date_from' => \Carbon\Carbon::parse($dateFrom)->format('Y-m-d'),
+                            'date_to' => \Carbon\Carbon::parse($dateTo)->format('Y-m-d'),
+                        ],
+                        false,
+                    ) }}"
+                        class="btn btn-primary d-flex align-items-center">
+                        Report <i class="ms-2 fa-solid fa-download"></i>
+                    </a>
+                </div>
+
+                <!-- Budget Cap Button -->
+                <div class="col-md-3 d-flex align-items-end mb-3">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#exampleModal">
+                        Budget Cap Settings
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Budget Cap Modal -->
+        @include('layouts.budget-cap-modal', ['partner' => $partner, 'budget_cap' => $budget_cap])
+
+        @if ($metrics)
+            <!-- Metrics Section -->
+            <div class="row mb-4">
+
+
+                @foreach ($metricsData as $data)
+                    <div id="{{ $data['id'] }}" class="col-md-2 mb-2">
+                        <div
+                            class="card custom-card shadow {{ $data['bg_class'] ?? '' }} d-flex align-items-center text-center ">
+                            <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                                <h3
+                                    class="card-title {{ $data['bg_class'] ? 'm-0' : '' }} {{ isset($data['additional_info']) ? 'm-0' : '' }}">
+                                    {{ $data['value'] }}</h3>
+                                <p
+                                    class="card-text {{ $data['bg_class'] ? 'm-0' : 'text-secondary' }}  {{ isset($data['additional_info']) ? 'm-0' : '' }}">
+                                    {{ $data['label'] }}</p>
+
+                                @isset($data['additional_info'])
+                                    <p class="body-text-small m-0 badge text-bg-warning">
+                                        {{ $data['additional_info']['label'] }}: {{ $data['additional_info']['limit'] }}
+                                    </p>
+                                    <p class="body-text-small m-0 mt-1">
+                                        {{ $data['additional_info']['est_cap_hit_label'] }}:
+                                        {{ $data['additional_info']['est_cap_hit_value'] }}
+                                    </p>
+                                @endisset
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+
+            <!-- Date Range Display -->
+            <div class="text-center mb-4">
+                <p>Data from: <strong>{{ \Carbon\Carbon::parse($dateFrom)->format('d M Y') }}</strong> to
+                    <strong>{{ \Carbon\Carbon::parse($dateTo)->format('d M Y') }}</strong>
+                </p>
+
+            </div>
+
+            <!-- Chart Section -->
+            <div class="chart mb-5">
+                <h2 class="fw-bold text-center">Clicks Chart</h2>
+                <canvas id="clicksChart"></canvas>
+            </div>
     </div>
-</div>
-
-
-<div class="mt-4 partner-card">
-    <canvas id="clicksChart"></canvas>
-</div>
-
+@else
+    <div style="margin-top: 200px;" class="d-flex justify-content-center align-items-center">
+        <h3>No Clicks Data Found</h3>
+    </div>
+    @endif
 
 @section('scripts')
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
-<script>
-    var ctx = document.getElementById('clicksChart').getContext('2d');
-    var data = @json($chartData);
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
 
-    var labels = [];
-    var clickCounts = [];
+    <script>
+        var chartData = @json($chartData);
+        var labels = chartData.map(data => data.date);
+        var totalClicks = chartData.map(data => data.total_clicks);
+        var domainWiseClicks = chartData.map(data => data.domain_clicks);
 
-    data.forEach(function(item) {
-        labels.push(item.click_date);
-        clickCounts.push(item.click_count);
-    });
+        var domainColors = {
+            "cabletv.com": "#fc4146",
+            "highspeedinternet.com": "#f39c12",
+            "satelliteinternet.com": "#9b59b6",
+            "reviews.org": "#2ecc71",
+            "whistleout.com": "#FFB6C1",
+        };
 
-    var chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Clicks',
-                data: clickCounts,
-                backgroundColor: 'rgb(13 110 253)',
-                borderColor: 'rgb(13 110 253)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
+        var ctx = document.getElementById('clicksChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                        label: 'Total Clicks',
+                        data: totalClicks,
+                        borderColor: '#3498db',
+                        fill: false,
+                    },
+                    ...Object.keys(domainWiseClicks[0]).map(function(domain) {
+                        var domainData = domainWiseClicks.map(data => data[domain] || 0);
+                        return {
+                            label: domain,
+                            data: domainData,
+                            borderColor: domainColors[domain] || '#' + Math.floor(Math.random() * 16777215)
+                                .toString(16),
+                            fill: false,
+                        };
+                    })
+                ]
             },
-            plugins: {
-                datalabels: {
-                    align: 'end',
-                    anchor: 'end'
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
                 }
             }
-        }
-    });
-</script>
-<script>
-    const dropdownButton = document.querySelector(".custom-dropdown-button");
-    const dropdownContent = document.querySelector(
-        ".custom-dropdown-content"
-    );
-    const tagsContainer = dropdownButton.querySelector(".tags-container");
-    const buttonText = dropdownButton.querySelector(".button-text");
-    const hiddenSelect = document.getElementById("hiddenSelect");
+        });
+    </script>
+    <script>
+        $(document).ready(function() {
+            // Get elements
+            var filter = $('#filter');
+            var dateRange = $('.date-range');
+            var invoicePace = $('#invoicePace');
+            var clicksPace = $('#clicksPace');
+            var totalCost = $('#totalCost');
 
-    window.onload = function() {
-        var affiliateValues = @json($values);
-        affiliateValues.forEach(function(value) {
-            if (value) {
-                addTag(value);
-                const divs = dropdownContent.querySelectorAll('option');
-                divs.forEach(div => {
-                    if (div.innerText.trim() === value.trim()) {
-                        div.remove();
-                    }
-                });
+            // Function to update visibility for date range
+            function updateDateRangeVisibility() {
+                var selectedValue = filter.val();
+                dateRange.css('display', selectedValue === 'custom' ? 'block' : 'none');
+            }
+
+            // Function to update visibility for card elements based on selected filter
+            function updateCardVisibility() {
+                var selectedValue = filter.val();
+                console.log(selectedValue);
+                var visible = ['mtd', 'this_month', 'last_1_month', 'last_7_days'].includes(selectedValue);
+                console.log(visible);
+                invoicePace.css('display', visible ? 'block' : 'none');
+                clicksPace.css('display', visible ? 'block' : 'none');
+                totalCost.css('display', visible ? 'block' : 'none');
+            }
+
+            // Initialize visibility
+            updateDateRangeVisibility();
+            updateCardVisibility();
+
+            // Add event listener to filter dropdown
+            filter.change(function() {
+                updateDateRangeVisibility();
+
+            });
+
+            var urlParams = new URLSearchParams(window.location.search);
+            var filterValueFromURL = urlParams.get('filter');
+            if (filterValueFromURL === 'mtd' || 'this_month' || 'last_1_month' || 'last_7_days') {
+                updateCardVisibility();
             }
 
         });
-    };
+    </script>
 
 
-    dropdownButton.addEventListener("click", () => {
-        const isVisible = dropdownContent.style.display === "block";
-        dropdownContent.style.display = isVisible ? "none" : "block";
-    });
+    <script>
+        $(document).ready(function() {
+            // Toggle switch handler
+            $('.toggle-switch').on('click', function() {
+                var toggleId = $(this).data('toggle');
+                var icon = $(this).find('i');
+                var newState = icon.hasClass('fa-toggle-off') ? 1 : 0;
 
-    document.addEventListener("click", (event) => {
-        if (
-            !dropdownButton.contains(event.target) &&
-            !dropdownContent.contains(event.target)
-        ) {
-            dropdownContent.style.display = "none";
-        }
-    });
-
-    dropdownContent.addEventListener("click", (event) => {
-        const selectedDiv = event.target;
-        if (selectedDiv && selectedDiv.dataset.value) {
-            const value = selectedDiv.dataset.value;
-
-            // Create a tag element
-            addTag(value);
-            selectedDiv.remove();
-
-            // Hide the dropdown content
-            dropdownContent.style.display = "none";
-        }
-    });
-
-
-    function addTag(value) {
-        const tag = document.createElement("div");
-        tag.classList.add("tag-filter");
-        tag.innerHTML = `${value} <span class="remove-tag-filter">&times;</span>`;
-
-        // Append the tag to the container
-        tagsContainer.appendChild(tag);
-
-        const currentValues = hiddenSelect.value ? hiddenSelect.value.split(',') : [];
-        if (!currentValues.includes(value)) {
-            currentValues.push(value);
-            hiddenSelect.value = currentValues.join(',');
-        }
-
-    }
-    tagsContainer.addEventListener("click", (event) => {
-        if (event.target.classList.contains("remove-tag-filter")) {
-            const tagToRemove = event.target.parentElement;
-
-            tagsContainer.removeChild(tagToRemove);
-
-            const valueToRemove = tagToRemove.textContent.trim().slice(0, -1); // Remove the '×'
-
-            const items = hiddenSelect.value.split(',');
-
-            const filteredItems = items.filter(item => item.trim() !== valueToRemove.trim());
-
-            hiddenSelect.value = filteredItems.join(',');
-
-            var newOption = document.createElement('option');
-
-            newOption.setAttribute('data-value', valueToRemove);
-            newOption.textContent = valueToRemove;
-            newOption.className = "custom-option p-1";
-
-
-            dropdownContent.appendChild(newOption);
-
-
-            if (tagsContainer.children.length === 0) {
-                buttonText.textContent = "Select an option";
-            }
-
-        }
-    });
-</script>
+                // Update the icon and hidden input value
+                icon.toggleClass('fa-toggle-on fa-toggle-off');
+                $('#' + toggleId).val(newState);
+            });
+        });
+    </script>
 @endsection
-
-
-
 @endsection

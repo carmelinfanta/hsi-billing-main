@@ -13,6 +13,9 @@ use App\Models\OtpPartnerUser;
 use App\Models\Partner;
 use App\Models\PartnerUsers;
 use App\Models\PasswordTokenPartnerUser;
+use App\Models\ProviderAvailabilityData;
+use App\Models\ProviderData;
+use App\Models\SelectedPlan;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -42,6 +45,7 @@ class PartnerUsersController extends Controller
             } else {
                 $token->getToken();
                 $token1 = AccessToken::latest('created_at')->first();
+                $access_token = $token1->access_token;
                 return back()->with('fail', 'Kindly Try Again');
             }
 
@@ -83,13 +87,21 @@ class PartnerUsersController extends Controller
             $newUser->invitation_status = "Invited";
             $newUser->status = "active";
             $newUser->is_primary = false;
+            if ($request->role === 'billing_contact') {
+                $newUser->role =  $request->role;
+                $newUser->invitation_status = "Registered";
+            }
             $newUser->save();
+
+            if ($request->role === 'billing_contact') {
+                return redirect('/admin/view-partner/' . $id . '')->with('success', 'Billing Contact Added Successfully');
+            }
 
             $partner = Partner::where('zoho_cust_id', $request->zoho_cust_id)->first();
 
             $this->sendEmail($newUser->first_name, $newUser->email, $unhashedPassword, $partner->company_name);
 
-            return redirect('/admin/view-partner/' . $id . '')->with('success', 'Invitation Email Sent Successfully');
+            return redirect('/admin/view-partner/' . $id . '')->with('success', 'A one-time password (OTP) verification code has been sent to your email. Please check your email and enter the code.');
         } catch (\Exception $e) {
 
             return redirect('/admin/view-partner/' . $id . '')->with('fail', 'Failed to send invitation: ' . $e->getMessage());
@@ -124,6 +136,7 @@ class PartnerUsersController extends Controller
         } else {
             $token->getToken();
             $token1 = AccessToken::latest('created_at')->first();
+            $access_token = $token1->access_token;
         }
 
         $client = new \GuzzleHttp\Client();
@@ -159,6 +172,7 @@ class PartnerUsersController extends Controller
         $user->last_name = $contact->last_name;
         $user->email = $contact->email;
         $user->phone_number = $contact->mobile;
+        $user->role = $request->role;
         $user->save();
 
         return back()->with('success', 'User Updated Successfully');
@@ -197,6 +211,7 @@ class PartnerUsersController extends Controller
             } else {
                 $token->getToken();
                 $token1 = AccessToken::latest('created_at')->first();
+                $access_token = $token1->access_token;
                 return back()->with('fail', 'Kindly Try Again');
             }
 

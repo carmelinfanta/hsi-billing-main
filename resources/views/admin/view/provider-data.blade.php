@@ -7,9 +7,16 @@
         <h5 class="fw-bold">Company Info</h5>
     </div>
     <div>
-        @if($data === null)
-        <a data-bs-toggle="modal" data-bs-target="#uploadLogoModal" style="cursor:pointer;" class="fw-bold btn btn-primary btn-sm">Upload Company Info</a>
-        @endif
+
+        <div class="flex-row">
+            @if($data === null)
+            <a data-bs-toggle="modal" data-bs-target="#uploadLogoModal" style="cursor:pointer;" class="fw-bold btn btn-primary btn-sm">Upload Company Info</a>
+            @endif
+            @if($data)
+            <a class="fw-bold btn btn-primary btn-sm ms-3" data-bs-toggle="modal" data-bs-target="#sendDetailModal"> Send Details To Admin</a>
+            @endif
+        </div>
+
     </div>
 </div>
 
@@ -31,8 +38,9 @@
                 <tr class="py-3 text-center ">
                     <td class="text-primary">
 
-                        <div class="d-flex flex-row align-items-center"><img src="{{$url}}" alt="logo" style="width:125px;" />
-                            <a class="btn btn-primary btn-sm ms-3" style="height:35px;" href="/download/{{ $data->logo_image }}" target="_blank">Download</a>
+                        <div class="d-flex flex-row align-items-center">
+                            <img src="{{$url}}" alt="logo" class="me-2" style="width:125px;" />
+                            <a class="btn btn-primary btn-sm ms-3 download-button" target="_blank" href="/download/{{$data->logo_image}}">Download</a>
                         </div>
                     </td>
                     <td class="fw-bold">{{$data->landing_page_url}}</td>
@@ -41,6 +49,34 @@
                 </tr>
             </tbody>
         </table>
+        <div class="modal fade" id="sendDetailModal" tabindex="-1" aria-labelledby="sendDetailModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-md modal-dialog-centered">
+                <div class="modal-content bg-popup">
+                    <div class="modal-header">
+                        <h3 class="modal-title " id="addressUpdateModalLabel">Send Details</h3>
+                        <button type="button" class="close border-0" data-bs-dismiss="modal" aria-label="Close"><i class="fa-solid fa-xmark fs-3"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <form action="/send-details" method="post">
+                            @csrf
+                            <div class="row">
+                                <div class="col-lg">
+                                    <label class="fw-bold">Select Admins*</label>
+                                    <select name="admin_id" class="form-select">
+                                        @foreach($admins as $admin)
+                                        <option value="{{$admin->id}}">{{$admin->admin_name}}</option>
+                                        @endforeach
+                                    </select>
+                                    <input value="{{$partner->zoho_cust_id}}" name="partner_id" hidden />
+                                </div>
+
+                            </div>
+                            <input type="submit" class="btn btn-primary px-3 py-2 rounded popup-element" value="Send Details">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
         @else
         <div class="d-flex justify-content-center align-items-center m-5  ">
             <p class="m-0 p-0">No data found</p>
@@ -155,10 +191,12 @@
                         @csrf
                         <label for="logo" class="form-label fw-bold">Logo*</label>
                         <input type="file" name="logo" class="form-control mb-3" accept="image/*" />
-                        <label for="landing_page_url" class="form-label fw-bold">Landing Page URL*</label>
-                        <input name="landing_page_url" class=" form-control" required>
+                        <label for="landing_page_url" class="form-label fw-bold">Landing Page Url*</label>
+                        <input name="landing_page_url" class=" form-control mb-3" required>
+                        <label for="landing_page_url_spanish" class="form-label fw-bold">Landing Page Url(Spanish)</label>
+                        <input name="landing_page_url_spanish" class=" form-control mb-3">
                         <label for="company_name" class="form-label fw-bold">Company Name*</label>
-                        <input name="company_name" class=" form-control" required>
+                        <input name="company_name" value="{{$partner->company_name}}" class=" form-control" required>
                         <input type="text" name="partner_id" value="{{$partner->id}}" hidden>
                         <button type="submit" class="btn btn-primary mt-3 mb-2">Upload Company Info</button>
                     </form>
@@ -198,7 +236,7 @@
                 <li class="{{ ($availability_data->currentPage() == 1) ? 'disabled' : '' }}">
                     <a href="{{ $availability_data->appends(request()->query())->url(1) }}" class="page-link">{{ __('First') }}</a>
                 </li>
-                @for ($i = 1; $i <= $aoa_data->lastPage(); $i++)
+                @for ($i = 1; $i <= $availability_data->lastPage(); $i++)
                     <li class="{{ ($availability_data->currentPage() == $i) ? 'active' : '' }}">
                         <a href="{{ $availability_data->appends(request()->query())->url($i) }}" class="page-link{{ ($availability_data->currentPage() == $i) ? ' active' : '' }}">{{ $i }}</a>
                     </li>

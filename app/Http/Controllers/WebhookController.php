@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\BillingInvoices;
+use Illuminate\Support\Str;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Models\Subscriptions;
@@ -10,12 +13,35 @@ use App\Models\Partner;
 use App\Models\CreditNotes;
 use App\Models\PartnerAddress;
 use App\Models\PaymentMethod;
-use App\Models\Refund;
+use App\Models\ApiToken;
+use App\Models\PartnerUsers;
 use App\Models\SubscriptionHistory;
+use App\Models\Refund;
+use Illuminate\Support\Facades\Response;
 use App\Models\ProviderAvailabilityData;
+use Illuminate\Support\Facades\Mail;
 
 class WebhookController extends Controller
 {
+    // Generate API Token to use from other systems to call webhooks on this system
+    public function generateToken(Request $request)
+    {
+        // Validate input
+        $request->validate([
+            'description' => 'required|string|max:255',
+            'expires_in_days' => 'nullable|integer|min:1'
+        ]);
+
+        // Generate the token using the model's static method
+        $result = ApiToken::generateToken(
+            $request->input('description'),
+            $request->input('expires_in_days')
+        );
+
+        // Return the result
+        return response()->json($result);
+    }
+
     public function updateAOAStatus(Request $request)
     {
         $data = $request->all();
@@ -24,8 +50,8 @@ class WebhookController extends Controller
         $message = $data['message'] ?? null;
 
         $file = ProviderAvailabilityData::where('id', $fileId)->first();
-        if($file) {
-            if(!in_array($status, ['pending', 'approved', 'rejected'])) {
+        if ($file) {
+            if (!in_array($status, ['pending', 'approved', 'rejected'])) {
                 return response()->json(['status' => 'error', 'message' => 'Invalid status'], 400);
             }
             $file->status = $status;
@@ -36,9 +62,18 @@ class WebhookController extends Controller
             return response()->json(['status' => 'error', 'message' => 'File not found'], 404);
         }
     }
-
     public function handleSubscription(Request $request)
     {
+        if (env('API_KEY_ENABLE')) {
+
+            $authHeader = $request->header('Authorization');
+            $secret_key = env('SECRET_KEY');
+
+            if ($authHeader !== $secret_key) {
+                return  response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);;
+            }
+        }
+
         $data = $request->json()->all();
         $eventType = $data['event_type'] ?? null;
 
@@ -250,6 +285,16 @@ class WebhookController extends Controller
 
     public function handleInvoice(Request $request)
     {
+
+        if (env('API_KEY_ENABLE')) {
+
+            $authHeader = $request->header('Authorization');
+            $secret_key = env('SECRET_KEY');
+
+            if ($authHeader !== $secret_key) {
+                return  response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);;
+            }
+        }
         $data = $request->json()->all();
 
         if (!$data) {
@@ -335,6 +380,11 @@ class WebhookController extends Controller
 
                 Log::info("Updated invoice: " . $invoiceData['invoice_id']);
             }
+            $cpc_plan = strpos($invoiceData['invoice_items'][0]['code'], 'cpc') !== false;
+            $first_invoice = Invoices::where('zoho_cust_id', $invoiceData['customer_id'])->exists();
+            if ($cpc_plan && !$first_invoice) {
+                $invoice->first_cpc = true;
+            }
 
             $invoice->invoice_date = $invoiceData['invoice_date'] ?? null;
 
@@ -344,11 +394,10 @@ class WebhookController extends Controller
 
             $invoice->balance = $invoiceData['balance'] ?? null;
 
-
-
             $invoice->payment_made = $invoiceData['payment_made'] ?? null;
 
             $invoice->invoice_link = $invoiceData['invoice_url'] ?? null;
+            
             $invoice->zoho_cust_id = $invoiceData['customer_id'] ?? null;
 
             $invoice->status = $invoiceData['status'] ?? null;
@@ -356,26 +405,49 @@ class WebhookController extends Controller
             $invoice->subscription_id = [
                 "subscription_id" => $invoiceData['subscriptions'][0]['subscription_id'] ?? null,
             ];
-            $invoice->invoice_items = [
-                "code" => $invoiceData['invoice_items'][0]['code'],
-                "quantity" => $invoiceData['invoice_items'][0]['quantity'],
-                "item_id" => $invoiceData['invoice_items'][0]['item_id'],
-                "discount_amount" => $invoiceData['invoice_items'][0]['discount_amount'],
-                "tax_name" => $invoiceData['invoice_items'][0]['tax_name'],
-                "description" => $invoiceData['invoice_items'][0]['description'],
-                "item_total" => $invoiceData['invoice_items'][0]['item_total'],
-                "item_custom_fields" => $invoiceData['invoice_items'][0]['item_custom_fields'],
-                "tax_id" => $invoiceData['invoice_items'][0]['tax_id'],
-                "tags" => $invoiceData['invoice_items'][0]['tags'],
-                "unit" => $invoiceData['invoice_items'][0]['unit'],
-                "account_id" => $invoiceData['invoice_items'][0]['account_id'],
-                "tax_type" => $invoiceData['invoice_items'][0]['tax_type'],
-                "price" => $invoiceData['invoice_items'][0]['price'],
-                "product_id" => $invoiceData['invoice_items'][0]['product_id'],
-                "account_name" => $invoiceData['invoice_items'][0]['account_name'],
-                "name" => $invoiceData['invoice_items'][0]['name'],
-                "tax_percentage" => $invoiceData['invoice_items'][0]['tax_percentage'],
-            ];
+            $invoice->invoice_items = array_map(function ($item) {
+                return [
+                    "code" => $item['code'],
+                    "quantity" => $item['quantity'],
+                    "item_id" => $item['item_id'],
+                    "discount_amount" => $item['discount_amount'],
+                    "tax_name" => $item['tax_name'],
+                    "description" => $item['description'],
+                    "item_total" => $item['item_total'],
+                    "item_custom_fields" => $item['item_custom_fields'],
+                    "tax_id" => $item['tax_id'],
+                    "tags" => $item['tags'],
+                    "unit" => $item['unit'],
+                    "account_id" => $item['account_id'],
+                    "tax_type" => $item['tax_type'],
+                    "price" => $item['price'],
+                    "product_id" => $item['product_id'],
+                    "account_name" => $item['account_name'],
+                    "name" => $item['name'],
+                    "tax_percentage" => $item['tax_percentage'],
+                ];
+            }, $invoiceData['invoice_items']);
+
+            // $invoice->invoice_items = [
+            //     "code" => $invoiceData['invoice_items'][0]['code'],
+            //     "quantity" => $invoiceData['invoice_items'][0]['quantity'],
+            //     "item_id" => $invoiceData['invoice_items'][0]['item_id'],
+            //     "discount_amount" => $invoiceData['invoice_items'][0]['discount_amount'],
+            //     "tax_name" => $invoiceData['invoice_items'][0]['tax_name'],
+            //     "description" => $invoiceData['invoice_items'][0]['description'],
+            //     "item_total" => $invoiceData['invoice_items'][0]['item_total'],
+            //     "item_custom_fields" => $invoiceData['invoice_items'][0]['item_custom_fields'],
+            //     "tax_id" => $invoiceData['invoice_items'][0]['tax_id'],
+            //     "tags" => $invoiceData['invoice_items'][0]['tags'],
+            //     "unit" => $invoiceData['invoice_items'][0]['unit'],
+            //     "account_id" => $invoiceData['invoice_items'][0]['account_id'],
+            //     "tax_type" => $invoiceData['invoice_items'][0]['tax_type'],
+            //     "price" => $invoiceData['invoice_items'][0]['price'],
+            //     "product_id" => $invoiceData['invoice_items'][0]['product_id'],
+            //     "account_name" => $invoiceData['invoice_items'][0]['account_name'],
+            //     "name" => $invoiceData['invoice_items'][0]['name'],
+            //     "tax_percentage" => $invoiceData['invoice_items'][0]['tax_percentage'],
+            // ];
 
             if ($invoiceData['payments']) {
 
@@ -389,7 +461,6 @@ class WebhookController extends Controller
                 ];
             }
 
-
             $invoice->updated_at = now();
 
             try {
@@ -401,6 +472,19 @@ class WebhookController extends Controller
 
                 return response()->json(['status' => 'error', 'message' => 'Failed to save invoice'], 500);
             }
+            try {
+
+                if ($invoice->first_cpc === false || $invoice->status !== "pending")
+                 {  
+                    $this->sendBillingInvoices($invoiceData);
+
+                }
+            } catch (\Exception $e) {
+
+                Log::error("Failed to send invoice emails: " . $e->getMessage());
+
+                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            }
 
             return response()->json(['status' => 'success', 'message' => 'Invoice processed'], 200);
         } else {
@@ -408,9 +492,32 @@ class WebhookController extends Controller
         }
     }
 
+    private function sendBillingInvoices($invoiceData)
+    {
+        $billing_contacts = PartnerUsers::where('zoho_cust_id', $invoiceData['customer_id'])->where('role', 'billing_contact')->get();
+        
+        foreach ($billing_contacts as $contact) {
+
+            // $invoice_price = count($invoiceData['invoice_items']) === 2 ? $invoiceData['invoice_items'][0]['item_total'] + $invoiceData['invoice_items'][1]['price'] : $invoiceData['invoice_items'][0]['price'];
+            $invoice_price = $invoiceData['currency_code'].' '.$invoiceData['total'];
+
+            $invoice_date = Carbon::parse($invoiceData['invoice_date'])->format('d M Y');
+
+            Mail::to($contact->email)->send(new BillingInvoices($contact->first_name, $invoiceData['invoice_number'], $invoice_date, $invoice_price, $invoiceData['invoice_url']));
+        }
+    }
 
     public function handleCreditNote(Request $request)
     {
+        if (env('API_KEY_ENABLE')) {
+
+            $authHeader = $request->header('Authorization');
+            $secret_key = env('SECRET_KEY');
+
+            if ($authHeader !== $secret_key) {
+                return  response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);;
+            }
+        }
         $data = $request->json()->all();
 
         if (!$data) {
@@ -500,6 +607,16 @@ class WebhookController extends Controller
 
     public function handleRefund(Request $request)
     {
+        if (env('API_KEY_ENABLE')) {
+
+            $authHeader = $request->header('Authorization');
+            $secret_key = env('SECRET_KEY');
+
+            if ($authHeader !== $secret_key) {
+                return  response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);;
+            }
+        }
+
         $data = $request->json()->all();
 
         $eventType = $data['event_type'] ?? null;
@@ -546,18 +663,27 @@ class WebhookController extends Controller
     }
 
 
-
     public function handlePaymentMethod(Request $request)
     {
+        if (env('API_KEY_ENABLE')) {
+
+            $authHeader = $request->header('Authorization');
+            $secret_key = env('SECRET_KEY');
+
+            if ($authHeader !== $secret_key) {
+                return  response()->json(['status' => 'error', 'message' => 'Unauthorized'], 401);;
+            }
+        }
+
         $data = $request->json()->all();
 
         $eventType = $data['event_type'] ?? null;
 
-        if ($eventType === 'payment_method_added') {
+        if ($eventType === 'payment_method_added' || $eventType === 'payment_method_updated') {
 
             $paymentMethodData = $data['data']['payment_method'];
 
-            $card = PaymentMethod::where('card_id', $paymentMethodData['payment_method_id'])->first();
+            $card = PaymentMethod::where('payment_method_id', $paymentMethodData['payment_method_id'])->first();
 
             if (!$card) {
 
@@ -566,14 +692,18 @@ class WebhookController extends Controller
                 Log::info("Created new card: " . $paymentMethodData['payment_method_id']);
 
                 $card->created_at = now();
+
             } else {
 
                 Log::info("Updated card: " . $paymentMethodData['payment_method_id']);
             }
 
-            $card->card_id = $paymentMethodData['payment_method_id'];
+            $card->payment_method_id = $paymentMethodData['payment_method_id'];
 
             $card->last_four_digits = $paymentMethodData['last_four_digits'];
+
+            $card->type = $paymentMethodData['type'];
+
             $card->payment_gateway = $paymentMethodData['payment_gateway'];
 
             $card->expiry_month = $paymentMethodData['expiry_month'];
@@ -583,12 +713,36 @@ class WebhookController extends Controller
             $card->zoho_cust_id = $paymentMethodData['customer']['customer_id'];
 
             $card->updated_at = now();
+
             $card->save();
 
             return response()->json(['status' => 'success', 'message' => 'Card details processed'], 200);
         }
 
-        return response()->json(['status' => 'ignored', 'message' => 'Event not handled'], 200);
+        if ($eventType === 'payment_method_deleted') {
+
+            $paymentMethodData = $data['data']['payment_method'] ?? null;
+        
+            if ($paymentMethodData && isset($paymentMethodData['payment_method_id'])) {
+                
+                $card = PaymentMethod::where('payment_method_id', $paymentMethodData['payment_method_id'])->first();
+        
+                if ($card) {
+
+                    $card->delete();
+
+                    return response()->json(['status' => 'success', 'message' => 'Record Deleted'], 200);
+
+                    Log::info("Payment method with ID {$paymentMethodData['payment_method_id']} deleted successfully.");
+
+                } else {
+                    
+                    Log::warning("Payment method with ID {$paymentMethodData['payment_method_id']} not found.");
+                }
+            } else {
+                Log::error("Invalid payment method data received: " . json_encode($paymentMethodData));
+            }
+        }
     }
 
     public function handleInvoiceOld(Request $request)

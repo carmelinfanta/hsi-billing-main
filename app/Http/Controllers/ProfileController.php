@@ -156,6 +156,7 @@ class ProfileController extends Controller
             } else {
                 $token->getToken();
                 $token1 = AccessToken::latest('created_at')->first();
+                $access_token = $token1->access_token;
                 return back()->with('fail', 'Kindly Try Again');
             }
 
@@ -197,13 +198,21 @@ class ProfileController extends Controller
             $newUser->invitation_status = "Invited";
             $newUser->status = "active";
             $newUser->is_primary = false;
+            if ($request->role === 'billing_contact') {
+                $newUser->invitation_status = "Registered";
+                $newUser->role = "billing_contact";
+            }
             $newUser->save();
+
+            if ($request->role === 'billing_contact') {
+                return back()->with('success', 'Billing Contact Added Successfully');
+            }
 
             $partner = Partner::where('zoho_cust_id', $request->zoho_cust_id)->first();
 
             $this->sendEmail($newUser->first_name, $newUser->email, $unhashedPassword, $partner->company_name);
 
-            return back()->with('success', 'Invitation Email Sent Successfully');
+            return back()->with('success', 'A one-time password (OTP) verification code has been sent to your email. Please check your email and enter the code.');
         } catch (\Exception $e) {
 
             return back()->with('fail', 'Failed to send invitation: ' . $e->getMessage());

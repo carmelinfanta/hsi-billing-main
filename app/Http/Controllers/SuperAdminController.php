@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Mail\AdminInvite;
 use App\Models\Admin;
+use App\Models\MailNotifications;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Facades\Log;
 
 class SuperAdminController extends Controller
 {
@@ -67,6 +67,20 @@ class SuperAdminController extends Controller
         $new_admin->receive_mails = $request->receive_mails ? 'Yes' : 'No';
         $new_admin->save();
 
+        $mail_notifications = new MailNotifications();
+        $mail_notifications->admin_id = $new_admin->id;
+        $mail_notifications->partner_signup_mail = $request->partner_signup_mail ? true : false;
+        $mail_notifications->plan_purchase_mail = $request->plan_purchase_mail ? true : false;
+        $mail_notifications->clicks_alert_mail = $request->clicks_alert_mail ? true : false;
+        $mail_notifications->support_ticket_mail = $request->support_ticket_mail ? true : false;
+        $mail_notifications->data_submission_mail = $request->data_submission_mail ? true : false;
+        $mail_notifications->setup_completion_mail = $request->setup_completion_mail ? true : false;
+        $mail_notifications->save();
+
+        if ($new_admin->role === "AlertRecipient") {
+            return redirect('admin/admins')->with('success', 'AlertRecipient added successfully');
+        }
+
         $this->sendEmail($request->admin_name, $request->email, $unhashedPassword);
 
         return redirect('admin/admins')->with('success', 'Admin invited successfully');
@@ -103,6 +117,31 @@ class SuperAdminController extends Controller
         $admin->role = $request->role;
         $admin->receive_mails = $request->receive_mails ? 'Yes' : 'No';
         $admin->save();
+        $mail_notifications = MailNotifications::where('admin_id', $id)->first();
+        if ($mail_notifications === null) {
+            $mail_notifications = new MailNotifications();
+        }
+        $mail_notifications->admin_id = $id;
+        $mail_notifications->partner_signup_mail = $request->partner_signup_mail ? true : false;
+        $mail_notifications->plan_purchase_mail = $request->plan_purchase_mail ? true : false;
+        $mail_notifications->clicks_alert_mail = $request->clicks_alert_mail ? true : false;
+        $mail_notifications->support_ticket_mail = $request->support_ticket_mail ? true : false;
+        $mail_notifications->data_submission_mail = $request->data_submission_mail ? true : false;
+        $mail_notifications->setup_completion_mail = $request->setup_completion_mail ? true : false;
+        $mail_notifications->save();
         return redirect('admin/admins')->with('success', 'Admin Updated Successfully');
+    }
+
+    public function viewEditAdmin()
+    {
+        $id = Route::getCurrentRoute()->id;
+        $admin = Admin::find($id);
+        $mail_notifications = MailNotifications::where('admin_id', $id)->first();
+        return view('admin.admin-edit', compact('admin', 'mail_notifications'));
+    }
+
+    public function viewInviteAdmin()
+    {
+        return view('admin.admin-invite');
     }
 }

@@ -38,7 +38,7 @@
 
                 <p>{{$subscription->plan_name}}</p>
 
-                <p>US&nbsp;${{number_format($subscription->price)}}</p>
+                <p>US&nbsp;${{number_format($subscription->price,2)}}</p>
 
                 <p><small>Next Renewal Date {{ Carbon\Carbon::parse($subscription->next_billing_at)->format('d-M-Y') }}</small></p>
 
@@ -48,7 +48,7 @@
                     <div class="col-md-12">
                         <p class="mb-3">You are upgrading to</p>
                         <p>{{$addon->name}}</p>
-                        <p>US&nbsp;${{number_format($addon->addon_price)}}</p>
+                        <p>US&nbsp;${{number_format($addon->addon_price,2)}}</p>
 
                     </div>
                     <div class="col-md-12">

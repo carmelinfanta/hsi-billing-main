@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Http\Controllers;
-
 use App\Models\AccessToken;
 use App\Models\AddOn;
 use App\Models\HostedPageId;

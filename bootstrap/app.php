@@ -8,9 +8,14 @@ use App\Http\Middleware\AlreadyLoggedIn;
 use App\Http\Middleware\Admin;
 use App\Http\Middleware\AdminLogin;
 use App\Http\Middleware\CheckClientCredentials;
+use App\Http\Middleware\checkPartnerSubscription;
+use App\Http\Middleware\CheckSubscription;
+use App\Http\Middleware\IsPlanSelected;
 use App\Http\Middleware\Partner;
 use App\Http\Middleware\PreventDuplicateSubscription;
 use App\Http\Middleware\SuperAdmin;
+use App\Http\Middleware\VerifyApiToken;
+use App\Models\SelectedPlan;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -28,7 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'preventBack' => PreventDuplicateSubscription::class,
             'isSuperAdmin' => SuperAdmin::class,
             'isAdminLoggedIn' => AdminLogin::class,
+            'apiToken' => VerifyApiToken::class,
+            'checkSubscription' => CheckSubscription::class,
+            'isPlanSelected' => IsPlanSelected::class,
             'client' => CheckClientCredentials::class,
+            'checkPartnerSubscription' => checkPartnerSubscription::class,
         ]);
         $middleware->validateCsrfTokens(except: [
             '/click-limit-notification',
